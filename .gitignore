@@ -1,0 +1,21 @@
+node_modules/
+.pnpm-store/
+.next/
+out/
+build/
+coverage/
+playwright-report/
+test-results/
+e2e/.auth/
+# Con barra inicial: solo el directorio de subidas en la raíz (runtime),
+# nunca app/api/uploads/ (la ruta que las sirve).
+/uploads/
+lib/generated/
+.env
+.env.app
+.env.local
+.env.*.local
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+.claude/settings.local.json

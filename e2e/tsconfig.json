@@ -1,0 +1,12 @@
+{
+  // El tsconfig raíz excluye e2e a propósito: allí manda `vitest/globals` y
+  // aquí manda Playwright. Este fichero comprueba los tipos de la suite E2E
+  // (y de su configuración) sin mezclar los dos conjuntos de globales.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "incremental": false
+  },
+  "include": ["../playwright.config.ts", "**/*.ts"],
+  "exclude": []
+}

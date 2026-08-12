@@ -1,0 +1,9 @@
+# Override solo para ensayar producción en local. Dokploy NO usa este fichero:
+# en el servidor el puerto lo publica Traefik, no el compose.
+#
+#   docker compose -f docker-compose.prod.yml -f docker-compose.prod.local.yml \
+#     -p art_cris_prod up --build
+services:
+  web:
+    ports:
+      - "3001:3000"

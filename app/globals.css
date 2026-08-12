@@ -1,0 +1,105 @@
+@import "tailwindcss";
+
+/* Paleta de galería: lienzo crudo, tinta y un acento de óleo. */
+@theme {
+  --color-canvas: #f4f0e8;
+  --color-canvas-dim: #e7e0d3;
+  --color-ink: #1a1714;
+  --color-ink-soft: #6b655d;
+  --color-oil: #8c3f24;
+
+  /* Las variables las inyecta next/font en <html>; el fallback evita que se
+     rompa la maqueta si la fuente no llega. */
+  --font-display: var(--font-display-loaded), "Georgia", serif;
+  --font-sans:
+    var(--font-sans-loaded), ui-sans-serif, system-ui, -apple-system, sans-serif;
+
+  /* Escala tipográfica fluida: sin saltos entre breakpoints. */
+  --text-hero: clamp(2.6rem, 1.4rem + 4.4vw, 5.5rem);
+  --text-title: clamp(1.9rem, 1.3rem + 2vw, 3rem);
+  --text-lead: clamp(1.05rem, 0.98rem + 0.4vw, 1.3rem);
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Los títulos son el carácter de la casa: serif de catálogo, apretada y
+   con números antiguos donde toque. */
+.display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  line-height: 1.05;
+  letter-spacing: -0.015em;
+}
+
+.lead {
+  font-size: var(--text-lead);
+  line-height: 1.5;
+  color: var(--color-ink-soft);
+}
+
+/* Cifras de catálogo: precios y medidas alineados en columna. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Impasto al pasar el ratón: un barrido especular diagonal y un relieve
+   mínimo, como la carga de pintura al recibir luz rasante. Se hace en CSS
+   y no en WebGL a propósito: son decenas de miniaturas y no compensa
+   sincronizar mallas con el DOM para un brillo. */
+.impasto {
+  position: relative;
+  overflow: hidden;
+}
+
+.impasto::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 400ms ease;
+  background:
+    linear-gradient(
+      105deg,
+      transparent 35%,
+      rgb(255 255 255 / 22%) 48%,
+      transparent 62%
+    ),
+    repeating-linear-gradient(
+      100deg,
+      rgb(255 255 255 / 5%) 0 1px,
+      transparent 1px 4px
+    );
+  mix-blend-mode: soft-light;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .impasto:hover::after {
+    opacity: 1;
+  }
+}
+
+/* Sin animaciones para quien las ha desactivado en el sistema.
+   La capa WebGL respeta esta misma señal en JS. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

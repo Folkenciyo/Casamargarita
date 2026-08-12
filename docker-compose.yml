@@ -1,0 +1,50 @@
+# Desarrollo. Todo corre en contenedores: no hace falta Node en la máquina.
+#   docker compose up --build
+services:
+  web:
+    build:
+      context: .
+      target: dev
+    command: pnpm dev
+    # format: raw → sin interpolación. Con `environment:` (o env_file normal)
+    # Compose se comería los `$` del hash argon2 y lo destrozaría.
+    env_file:
+      - path: .env.app
+        format: raw
+        required: false
+    environment:
+      DATABASE_URL: postgresql://art:art@postgres:5432/art_cris?schema=public
+      UPLOADS_DIR: /app/uploads
+      WATCHPACK_POLLING: "true"
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+      - next_cache:/app/.next
+      - uploads:/app/uploads
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: art
+      POSTGRES_PASSWORD: art
+      POSTGRES_DB: art_cris
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432" # solo en desarrollo, para inspeccionar con un cliente
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U art -d art_cris"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
+  uploads:
+  node_modules:
+  next_cache:

@@ -1,0 +1,96 @@
+generator client {
+  provider = "prisma-client-js"
+  // Salida explícita dentro del proyecto: con pnpm el cliente acabaría dentro
+  // de node_modules/.pnpm/... y la imagen standalone no podría copiarlo.
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PaintingStatus {
+  AVAILABLE
+  RESERVED
+  SOLD
+  NOT_FOR_SALE
+}
+
+model Painting {
+  id          String         @id @default(cuid())
+  slug        String         @unique
+  title       String
+  description String?
+  year        Int?
+  technique   String         @default("Óleo sobre lienzo")
+  widthCm     Int
+  heightCm    Int
+  /// null = "precio a consultar"
+  priceCents  Int?
+  currency    String         @default("EUR")
+  status      PaintingStatus @default(AVAILABLE)
+  published   Boolean        @default(true)
+  featured    Boolean        @default(false)
+  /// Orden manual en la galería
+  position    Int            @default(0)
+  images      Image[]
+  inquiries   Inquiry[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([published, position])
+  @@index([featured])
+}
+
+model Image {
+  id          String   @id @default(cuid())
+  paintingId  String
+  painting    Painting @relation(fields: [paintingId], references: [id], onDelete: Cascade)
+  /// Ruta relativa dentro de UPLOADS_DIR, sin tamaño ni extensión:
+  /// "paintings/<paintingId>/<imageId>"
+  basePath    String
+  width       Int
+  height      Int
+  /// Anchos generados realmente (no se amplía nunca): [400, 800, 1600]
+  widths      Int[]
+  /// data URL base64 de ~8px, placeholder mientras carga
+  blurDataUrl String
+  alt         String?
+  isPrimary   Boolean  @default(false)
+  position    Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  @@index([paintingId, position])
+}
+
+/// Fila única con id "singleton"
+model Artist {
+  id           String   @id @default("singleton")
+  name         String
+  statement    String   @default("")
+  bio          String   @default("")
+  portraitPath String?
+  /// Ancho, alto, anchos generados y blur del retrato: mismos campos que
+  /// Image, sin tabla propia porque el artista solo tiene un retrato.
+  portraitWidth       Int?
+  portraitHeight      Int?
+  portraitWidths      Int[]
+  portraitBlurDataUrl String?
+  email        String?
+  instagram    String?
+  updatedAt    DateTime @updatedAt
+}
+
+model Inquiry {
+  id         String    @id @default(cuid())
+  paintingId String?
+  painting   Painting? @relation(fields: [paintingId], references: [id], onDelete: SetNull)
+  name       String
+  email      String
+  message    String
+  createdAt  DateTime  @default(now())
+  readAt     DateTime?
+
+  @@index([readAt, createdAt])
+}

@@ -1,0 +1,63 @@
+# Tests, siempre en contenedor:
+#   docker compose -f docker-compose.test.yml run --rm test
+#   docker compose -f docker-compose.test.yml run --rm e2e
+services:
+  test:
+    build:
+      context: .
+      target: dev
+    command: sh -c "pnpm prisma generate && pnpm prisma migrate deploy && pnpm test"
+    environment:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://art:art@postgres-test:5432/art_cris_test?schema=public
+      UPLOADS_DIR: /tmp/uploads
+      SESSION_SECRET: test-secret-test-secret-test-secret-32
+      ADMIN_EMAIL: test@example.com
+      # hash argon2id de "test-password" — solo para tests
+      ADMIN_PASSWORD_HASH: ${TEST_ADMIN_PASSWORD_HASH:-}
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+
+  e2e:
+    build:
+      context: .
+      target: e2e
+    # Chromium se descarga una sola vez: queda en el volumen playwright_browsers.
+    # El servidor de la app lo arranca Playwright (ver playwright.config.ts).
+    command: sh -c "pnpm exec playwright install chromium && pnpm prisma generate && pnpm prisma migrate deploy && pnpm exec playwright test"
+    environment:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://art:art@postgres-test:5432/art_cris_test?schema=public
+      UPLOADS_DIR: /tmp/uploads
+      SESSION_SECRET: test-secret-test-secret-test-secret-32
+      ADMIN_EMAIL: test@example.com
+      ADMIN_PASSWORD_HASH: ${TEST_ADMIN_PASSWORD_HASH:-}
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+      - playwright_browsers:/ms-playwright
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+
+  postgres-test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: art
+      POSTGRES_PASSWORD: art
+      POSTGRES_DB: art_cris_test
+    tmpfs:
+      - /var/lib/postgresql/data # efímero: cada run parte de cero
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U art -d art_cris_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  node_modules:
+  playwright_browsers:

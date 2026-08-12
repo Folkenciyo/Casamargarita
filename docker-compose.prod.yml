@@ -1,0 +1,63 @@
+# Producción — este es el fichero que consume Dokploy.
+# El dominio y el certificado TLS se configuran desde la UI de Dokploy:
+# NO añadir labels de Traefik a mano.
+services:
+  migrator:
+    build:
+      context: .
+      target: migrator
+    environment:
+      DATABASE_URL: postgresql://art:${POSTGRES_PASSWORD}@postgres:5432/art_cris?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  web:
+    build:
+      context: .
+      target: runner
+    # SESSION_SECRET, ADMIN_EMAIL, ADMIN_PASSWORD_HASH y PUBLIC_URL.
+    # format: raw es imprescindible: sin él Compose interpola los `$` del hash
+    # argon2 y el login deja de funcionar. `.env` cubre el caso de Dokploy,
+    # que vuelca ahí las variables definidas en su UI.
+    env_file:
+      - path: .env
+        format: raw
+        required: false
+      - path: .env.app
+        format: raw
+        required: false
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://art:${POSTGRES_PASSWORD}@postgres:5432/art_cris?schema=public
+      UPLOADS_DIR: /app/uploads
+    volumes:
+      - uploads:/app/uploads
+    expose:
+      - "3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: art
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: art_cris
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U art -d art_cris"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  uploads:
