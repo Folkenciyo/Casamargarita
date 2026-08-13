@@ -43,7 +43,13 @@ castellano, con sus tildes.
   suelto.** Están envueltas en el caché de datos con etiquetas (`lib/cache.ts`):
   el HTML se rehace en cada visita, pero Postgres solo se toca cuando algo
   caduca. Toda escritura del panel llama a `invalidar(...)` con sus etiquetas;
-  si te saltas eso, el cambio no se ve. **De ahí no puede salir una `Date`**:
+  si te saltas eso, el cambio no se ve. **Lo que entra en Postgres por otro
+  camino —un script, restaurar una copia, la siembra de la suite— no invalida
+  nada**, porque `revalidateTag` solo existe dentro del servidor de Next; para
+  eso está `POST /api/revalidate` (apagado sin `REVALIDATE_SECRET`). Un test
+  que escriba con Prisma y luego mire una página pública tiene que llamarlo, o
+  pasará la primera vez y fallará la siguiente: la base de datos de la suite es
+  efímera, pero `.next/cache` sobrevive. **De ahí no puede salir una `Date`**:
   Next guarda con `JSON.stringify` y volvería como texto con el tipo mintiendo,
   así que las fechas se devuelven ya en ISO.
 - **Los servicios de `docker-compose.prod.yml` llevan prefijo
@@ -93,6 +99,8 @@ castellano, con sus tildes.
   limitador cuenta por IP. Si añades un fichero, añade su IP.
 - Nadie deja el estado peor de lo que lo encontró: lo que un test crea, lo
   borra; lo que modifica, lo restaura.
+- Si un test escribe con Prisma y luego abre una página pública, llama a
+  `revalidarCache(request)` (`e2e/fixtures/revalidar.ts`) entre las dos cosas.
 
 ## Git
 

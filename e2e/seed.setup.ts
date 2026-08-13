@@ -5,6 +5,7 @@ import { test as setup } from "@playwright/test";
 import { PrismaClient } from "../lib/generated/prisma/client.js";
 import { storePaintingImage } from "../lib/images/pipeline";
 import { samplePaintingJpeg } from "./fixtures/images";
+import { revalidarCache } from "./fixtures/revalidar";
 import {
   E2E_UPLOADS_DIR,
   SEEDED_ARTIST,
@@ -26,7 +27,9 @@ const COLORS = [
   { r: 74, g: 92, b: 110 },
 ];
 
-setup("siembra la base de datos y las fotos de referencia", async () => {
+setup("siembra la base de datos y las fotos de referencia", async ({
+  request,
+}) => {
   setup.setTimeout(120_000);
 
   const prisma = new PrismaClient();
@@ -82,6 +85,11 @@ setup("siembra la base de datos y las fotos de referencia", async () => {
         },
       });
     }
+    // La siembra entra por Prisma, así que el caché de datos no se entera. Y
+    // ese caché vive en `.next/cache`, que sobrevive entre ejecuciones aunque
+    // la base de datos de la suite se rehaga entera: sin esto, los tests
+    // públicos mirarían el catálogo de la ejecución anterior.
+    await revalidarCache(request);
   } finally {
     await prisma.$disconnect();
   }
