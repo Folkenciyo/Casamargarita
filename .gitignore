@@ -13,6 +13,9 @@ e2e/.auth/
 lib/generated/
 .env
 .env.app
+# Credenciales del panel de despliegue. Nunca versionado: su clave da control
+# total sobre el servidor y sobre los demás proyectos que viven en él.
+.env.dokploy
 .env.local
 .env.*.local
 *.tsbuildinfo
