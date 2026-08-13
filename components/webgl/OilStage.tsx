@@ -5,6 +5,7 @@ import { createOilRenderer, type OilRenderer } from "./oil-renderer";
 import {
   COVER_MS,
   INTRO_MS,
+  NAVIGATE_AT,
   REVEAL_MS,
   getState,
   setPhase,
@@ -18,9 +19,21 @@ const DURATION: Record<"intro" | "cover" | "reveal", number> = {
   reveal: REVEAL_MS,
 };
 
-/** easeInOutCubic: la pincelada arranca y frena como un gesto, no lineal. */
-function ease(t: number): number {
+/** easeInOutCubic: la mano arranca y frena. Para manchar y para la intro. */
+function easeInOut(t: number): number {
   return t < 0.5 ? 4 * t ** 3 : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+/**
+ * easeOutCubic, solo para retirar.
+ *
+ * Con el mismo easing que al manchar, la pintura se quedaba quieta un cuarto
+ * de segundo antes de empezar a irse: el gesto se apelotonaba en el centro del
+ * tiempo. Al levantar la pintura interesa lo contrario —se va enseguida y el
+ * último velo se disipa despacio—, que además destapa antes lo que hay debajo.
+ */
+function easeOut(t: number): number {
+  return 1 - Math.pow(1 - t, 3);
 }
 
 /**
@@ -31,15 +44,25 @@ function ease(t: number): number {
  * Nunca captura eventos ni aporta contenido: el HTML de debajo sigue siendo
  * navegable y accesible.
  */
-export function OilStage({ onCoverComplete }: { onCoverComplete: () => void }) {
+export function OilStage({
+  onCoverEnough,
+  onCoverComplete,
+}: {
+  /** El trazo ya tapa lo suficiente: momento de pedir la vista nueva. */
+  onCoverEnough: () => void;
+  onCoverComplete: () => void;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<OilRenderer | null>(null);
   const frameRef = useRef<number | null>(null);
   const watchdogRef = useRef<number | null>(null);
   const startedAt = useRef<number | null>(null);
   const activePhase = useRef<StagePhase>("idle");
+  const navegado = useRef(false);
   const coverCallback = useRef(onCoverComplete);
   coverCallback.current = onCoverComplete;
+  const enoughCallback = useRef(onCoverEnough);
+  enoughCallback.current = onCoverEnough;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -62,10 +85,19 @@ export function OilStage({ onCoverComplete }: { onCoverComplete: () => void }) {
         return;
       }
 
-      // Pantalla cubierta esperando a que monte la ruta nueva: se mantiene el
-      // último fotograma, sin animar.
+      // Pantalla manchada esperando a que monte la vista nueva. Se sigue
+      // dibujando —con el trazo al final de su recorrido— en vez de congelar
+      // el último fotograma: así la veta del óleo se mueve y la espera parece
+      // pintura fresca y no una captura pegada encima.
       if (phase === "held") {
         activePhase.current = "held";
+        renderer!.draw({
+          progress: 1,
+          mode: 1,
+          angle,
+          reveal: 0,
+          time: performance.now() / 1000,
+        });
         frameRef.current = requestAnimationFrame(tick);
         return;
       }
@@ -73,21 +105,36 @@ export function OilStage({ onCoverComplete }: { onCoverComplete: () => void }) {
       if (activePhase.current !== phase) {
         activePhase.current = phase;
         startedAt.current = performance.now();
+        if (phase === "cover") navegado.current = false;
       }
 
       const elapsed = performance.now() - (startedAt.current ?? 0);
       const progress = Math.min(elapsed / DURATION[phase], 1);
 
+      const suave = phase === "cover" || phase === "intro" ? easeInOut : easeOut;
+
       renderer!.draw({
-        progress: ease(progress),
+        progress: suave(progress),
         mode: phase === "intro" ? 0 : 1,
         angle,
         reveal: phase === "cover" ? 0 : 1,
+        time: performance.now() / 1000,
       });
+
+      // A media pincelada la mancha ya tapa: se pide la vista nueva ahora para
+      // que cargue debajo, en vez de regalar lo que queda de animación.
+      if (phase === "cover" && !navegado.current && progress >= NAVIGATE_AT) {
+        navegado.current = true;
+        enoughCallback.current();
+      }
 
       if (progress >= 1) {
         startedAt.current = null;
         if (phase === "cover") {
+          if (!navegado.current) {
+            navegado.current = true;
+            enoughCallback.current();
+          }
           setPhase("held", angle);
           coverCallback.current();
         } else {
@@ -107,12 +154,27 @@ export function OilStage({ onCoverComplete }: { onCoverComplete: () => void }) {
      */
     function armWatchdog(phase: StagePhase) {
       if (watchdogRef.current !== null) clearTimeout(watchdogRef.current);
-      if (phase === "idle" || phase === "held") return;
+      if (phase === "idle") return;
+
+      // Cubierto y esperando: si la vista nueva no llega —red caída, error del
+      // servidor—, más vale destapar y que se vea la página de antes que dejar
+      // a alguien delante de una pantalla marrón.
+      if (phase === "held") {
+        watchdogRef.current = window.setTimeout(() => {
+          if (getState().phase !== "held") return;
+          setPhase("reveal", getState().angle);
+        }, 8000);
+        return;
+      }
 
       watchdogRef.current = window.setTimeout(() => {
         const { phase: current, angle } = getState();
         if (current !== phase) return;
         if (current === "cover") {
+          if (!navegado.current) {
+            navegado.current = true;
+            enoughCallback.current();
+          }
           setPhase("held", angle);
           coverCallback.current();
         } else {

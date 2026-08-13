@@ -3,6 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef } from "react";
 import {
+  HOLD_MIN_MS,
   INTRO_SEEN_KEY,
   getState,
   prefersReducedMotion,
@@ -33,6 +34,12 @@ export function OilTransitions() {
   const pathname = usePathname();
   const pendingHref = useRef<string | null>(null);
   const enabled = useRef(false);
+  /** Cuándo quedó la pantalla cubierta del todo, para no descubrirla al vuelo. */
+  const heldSince = useRef<number | null>(null);
+  const revealTimer = useRef<number | null>(null);
+  /** Hay una navegación en marcha cuyo cambio de ruta todavía no ha llegado. */
+  const esperandoRuta = useRef(false);
+  const rutaLista = useRef(false);
 
   useEffect(() => {
     enabled.current = !prefersReducedMotion() && supportsWebgl();
@@ -63,18 +70,51 @@ export function OilTransitions() {
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, []);
 
-  // Al confirmarse la ruta nueva, el brochazo se retira.
+  /**
+   * Retira el brochazo, pero nunca antes de que la pantalla haya estado
+   * cubierta del todo un instante. Hacen falta las dos condiciones —trazo
+   * terminado y vista montada— y cada una puede llegar antes que la otra, así
+   * que la última en cumplirse es la que dispara.
+   */
+  const destaparSiTodoListo = useCallback(() => {
+    if (!rutaLista.current || heldSince.current === null) return;
+    if (revealTimer.current !== null) return;
+
+    const espera = Math.max(
+      0,
+      HOLD_MIN_MS - (performance.now() - heldSince.current),
+    );
+
+    const destapar = () => {
+      revealTimer.current = null;
+      heldSince.current = null;
+      rutaLista.current = false;
+      setPhase("reveal", getState().angle);
+    };
+
+    if (espera === 0) destapar();
+    else revealTimer.current = window.setTimeout(destapar, espera);
+  }, []);
+
+  // La vista nueva ya está montada. Puede ocurrir a media pincelada.
   useEffect(() => {
-    if (pendingHref.current === null) return;
+    if (!esperandoRuta.current) return;
+    esperandoRuta.current = false;
+    rutaLista.current = true;
+    destaparSiTodoListo();
+  }, [pathname, destaparSiTodoListo]);
+
+  /** El trazo ya tapa: se pide la vista nueva y carga bajo la pintura. */
+  const handleCoverEnough = useCallback(() => {
+    const href = pendingHref.current;
     pendingHref.current = null;
-    setPhase("reveal", getState().angle);
-  }, [pathname]);
+    if (href) router.push(href);
+  }, [router]);
 
   const handleCoverComplete = useCallback(() => {
-    const href = pendingHref.current;
-    if (href) router.push(href);
-    else setPhase("idle");
-  }, [router]);
+    heldSince.current = performance.now();
+    destaparSiTodoListo();
+  }, [destaparSiTodoListo]);
 
   useEffect(() => {
     function onClick(event: MouseEvent) {
@@ -99,6 +139,9 @@ export function OilTransitions() {
       event.preventDefault();
       event.stopPropagation();
       pendingHref.current = url.pathname + url.search;
+      esperandoRuta.current = true;
+      rutaLista.current = false;
+      heldSince.current = null;
       setPhase("cover", randomAngle());
     }
 
@@ -107,5 +150,10 @@ export function OilTransitions() {
     return () => document.removeEventListener("click", onClick, true);
   }, []);
 
-  return <OilStage onCoverComplete={handleCoverComplete} />;
+  return (
+    <OilStage
+      onCoverEnough={handleCoverEnough}
+      onCoverComplete={handleCoverComplete}
+    />
+  );
 }

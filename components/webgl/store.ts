@@ -44,9 +44,33 @@ export function randomAngle(): number {
 }
 
 export const INTRO_SEEN_KEY = "casamargarita:intro-seen";
-export const COVER_MS = 420;
-export const REVEAL_MS = 520;
+
+/**
+ * Los tiempos del gesto. Son largos a propósito: a 420 ms el barrido se leía
+ * como un parpadeo de color y no como una mano pintando. Lo que cuesta no es
+ * tiempo perdido —la vista nueva se está cargando debajo mientras tanto—, así
+ * que el gasto real es la diferencia entre esto y lo que tarde el servidor.
+ */
+export const COVER_MS = 780;
+export const REVEAL_MS = 820;
 export const INTRO_MS = 2100;
+
+/**
+ * Cuánto se queda la pantalla manchada como mínimo, aunque la vista nueva ya
+ * esté lista. Sin esta pausa, una navegación instantánea encadena el cubrir y
+ * el descubrir sin respirar y no se llega a ver la pantalla pintada.
+ */
+export const HOLD_MIN_MS = 220;
+
+/**
+ * A partir de qué punto del brochazo se pide la ruta nueva.
+ *
+ * No se espera al final: para entonces la pantalla ya está tapada y se habrían
+ * regalado 780 ms de carga. Tampoco al principio, porque el cambio de vista
+ * asomaría por debajo de la pintura. A esta altura del trazo la mancha cubre
+ * ya casi todo y el relevo no se ve.
+ */
+export const NAVIGATE_AT = 0.62;
 
 export function prefersReducedMotion(): boolean {
   if (typeof window === "undefined") return true;
