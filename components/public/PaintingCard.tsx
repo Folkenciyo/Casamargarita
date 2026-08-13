@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { formatDimensions, formatPrice } from "@/lib/catalog";
-import { STATUS_LABELS } from "@/lib/validation/painting";
+import { diccionario, ruta, type Idioma } from "@/lib/i18n/dictionaries";
+import type { STATUS_LABELS } from "@/lib/validation/painting";
 import { PaintingImage } from "./PaintingImage";
 
 export type CardPainting = {
@@ -25,16 +26,19 @@ export type CardPainting = {
 export function PaintingCard({
   painting,
   priority = false,
+  lang = "es",
 }: {
   painting: CardPainting;
   priority?: boolean;
+  lang?: Idioma;
 }) {
   const cover = painting.images[0];
   const sold = painting.status === "SOLD" || painting.status === "NOT_FOR_SALE";
+  const t = diccionario(lang);
 
   return (
     <article>
-      <Link href={`/obra/${painting.slug}`} className="group block">
+      <Link href={ruta(lang, `/obra/${painting.slug}`)} className="group block">
         {/* Nunca se recorta una obra: se muestra entera, a su proporción. Lo
             que se iguala es la altura de la caja, así todas las obras quedan
             alineadas por abajo como colgadas de una misma línea. */}
@@ -72,8 +76,13 @@ export function PaintingCard({
           <span className="mx-2 opacity-40">·</span>
           <span className={sold ? "" : "text-[color:var(--color-ink)]"}>
             {sold
-              ? STATUS_LABELS[painting.status]
-              : formatPrice(painting.priceCents, painting.currency)}
+              ? t.estados[painting.status]
+              : formatPrice(
+                  painting.priceCents,
+                  painting.currency,
+                  lang === "en" ? "en-GB" : "es-ES",
+                  t.precioAConsultar,
+                )}
           </span>
         </p>
       </Link>

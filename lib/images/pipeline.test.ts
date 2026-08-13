@@ -5,6 +5,7 @@ import sharp from "sharp";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   MAX_UPLOAD_BYTES,
+  PIPELINE_WIDTHS,
   resolveUploadPath,
   storeArtistPortrait,
   storePaintingImage,
@@ -171,15 +172,23 @@ describe("resolveUploadPath", () => {
 describe("anchos del pipeline", () => {
   it("coinciden con los que se usan al construir URLs", async () => {
     // Las dos listas están duplicadas a propósito (ver pipeline.ts); esto
-    // impide que se separen sin que nadie se entere.
+    // impide que se separen sin que nadie se entere. Se comparan las listas y
+    // no el resultado de una subida: el ancho de zoom solo se genera a partir
+    // de originales de 3200 px, y crear uno aquí solo alargaría el test.
     const { IMAGE_WIDTHS } = await import("./urls");
+    expect([...PIPELINE_WIDTHS]).toEqual([...IMAGE_WIDTHS]);
+  });
+
+  it("genera todos los anchos que caben en el original", async () => {
     const { widths } = await storePaintingImage({
       buffer: await jpeg(2000, 1500),
       paintingId: "p9",
       imageId: "i9",
       uploadsDir,
     });
-    expect(widths).toEqual([...IMAGE_WIDTHS]);
+
+    // 3200 no sale: nunca se amplía una imagen.
+    expect(widths).toEqual([400, 800, 1600]);
   });
 });
 

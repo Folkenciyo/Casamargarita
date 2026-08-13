@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inquirySchema, paintingSchema } from "./painting";
+import { artistSchema, inquirySchema, paintingSchema } from "./painting";
 
 const base = {
   title: "Luz de tarde",
@@ -68,5 +68,31 @@ describe("inquirySchema", () => {
 
   it("exige un mensaje con contenido", () => {
     expect(() => inquirySchema.parse({ ...valid, message: "hola" })).toThrow();
+  });
+});
+
+describe("artistSchema", () => {
+  const valid = { name: "Casa Margarita" };
+
+  it("exige el nombre", () => {
+    expect(() => artistSchema.parse({ ...valid, name: "  " })).toThrow();
+  });
+
+  // Actualizar la app no puede vaciar la galería de obra vendida: si el
+  // campo no llega, se muestra.
+  it("muestra las vendidas si el formulario no dice nada", () => {
+    expect(artistSchema.parse(valid).showSoldPaintings).toBe(true);
+  });
+
+  it("respeta el interruptor cuando llega", () => {
+    expect(
+      artistSchema.parse({ ...valid, showSoldPaintings: false })
+        .showSoldPaintings,
+    ).toBe(false);
+  });
+
+  it("rechaza un correo mal escrito pero acepta que esté vacío", () => {
+    expect(artistSchema.parse({ ...valid, email: "" }).email).toBe("");
+    expect(() => artistSchema.parse({ ...valid, email: "arroba" })).toThrow();
   });
 });

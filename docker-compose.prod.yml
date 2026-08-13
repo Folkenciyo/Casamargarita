@@ -7,7 +7,7 @@ services:
       context: .
       target: migrator
     environment:
-      DATABASE_URL: postgresql://art:${POSTGRES_PASSWORD}@postgres:5432/art_cris?schema=public
+      DATABASE_URL: postgresql://art:${POSTGRES_PASSWORD}@postgres:5432/casamargarita?schema=public
     depends_on:
       postgres:
         condition: service_healthy
@@ -30,7 +30,7 @@ services:
         required: false
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://art:${POSTGRES_PASSWORD}@postgres:5432/art_cris?schema=public
+      DATABASE_URL: postgresql://art:${POSTGRES_PASSWORD}@postgres:5432/casamargarita?schema=public
       UPLOADS_DIR: /app/uploads
     volumes:
       - uploads:/app/uploads
@@ -43,16 +43,65 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
+  # Vacía la papelera una vez al día. Usa la imagen de la app porque necesita
+  # Prisma y el pipeline de imágenes para borrar también las fotos del disco.
+  purge:
+    build:
+      context: .
+      target: dev
+    command: >
+      sh -c "while true; do pnpm purge-trash || true; sleep 86400; done"
+    env_file:
+      - path: .env
+        format: raw
+        required: false
+      - path: .env.app
+        format: raw
+        required: false
+    environment:
+      DATABASE_URL: postgresql://art:${POSTGRES_PASSWORD}@postgres:5432/casamargarita?schema=public
+      UPLOADS_DIR: /app/uploads
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  # Copia diaria y, una vez por semana, restauración de prueba. Usa la imagen
+  # de Postgres porque solo necesita pg_dump, psql y tar: nada de Node.
+  backup:
+    image: postgres:16-alpine
+    command: /app/scripts/backup-cron.sh
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: art
+      POSTGRES_DB: casamargarita
+      UPLOADS_DIR: /uploads
+      BACKUP_DIR: /backups
+      BACKUP_RETENTION_DAYS: "14"
+    volumes:
+      - ./scripts:/app/scripts:ro
+      - uploads:/uploads:ro
+      - backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
   postgres:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: art
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: art_cris
+      POSTGRES_DB: casamargarita
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U art -d art_cris"]
+      test: ["CMD-SHELL", "pg_isready -U art -d casamargarita"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -61,3 +110,6 @@ services:
 volumes:
   pgdata:
   uploads:
+  # Declararlo persistente en Dokploy, igual que uploads: es el único sitio
+  # donde vive lo que salvaría un desastre.
+  backups:

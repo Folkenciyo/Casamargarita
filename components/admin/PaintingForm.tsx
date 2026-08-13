@@ -16,6 +16,7 @@ export type PaintingValues = {
   status: (typeof PAINTING_STATUSES)[number];
   published: boolean;
   featured: boolean;
+  seriesId: string | null;
 };
 
 const EMPTY: PaintingValues = {
@@ -29,6 +30,7 @@ const EMPTY: PaintingValues = {
   status: "AVAILABLE",
   published: true,
   featured: false,
+  seriesId: null,
 };
 
 const field =
@@ -52,10 +54,13 @@ export function PaintingForm({
   action,
   values = EMPTY,
   submitLabel,
+  series = [],
 }: {
   action: (state: ActionState, formData: FormData) => Promise<ActionState>;
   values?: PaintingValues;
   submitLabel: string;
+  /** Series disponibles para el desplegable. Vacío = todavía no hay ninguna. */
+  series?: { id: string; title: string }[];
 }) {
   const [state, formAction] = useActionState<ActionState, FormData>(action, {});
 
@@ -192,6 +197,25 @@ export function PaintingForm({
           defaultValue={values.description}
           className={field}
         />
+      </div>
+
+      <div>
+        <label className={label} htmlFor="seriesId">
+          Serie
+        </label>
+        <select
+          id="seriesId"
+          name="seriesId"
+          defaultValue={values.seriesId ?? ""}
+          className={field}
+        >
+          <option value="">Sin serie</option>
+          {series.map((serie) => (
+            <option key={serie.id} value={serie.id}>
+              {serie.title}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="flex gap-6">

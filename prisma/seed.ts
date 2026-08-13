@@ -8,7 +8,7 @@ async function main() {
     update: {},
     create: {
       id: "singleton",
-      name: "Cristina",
+      name: "Casa Margarita",
       statement: "Óleo sobre lienzo. La materia antes que el motivo.",
       bio: "Biografía pendiente de redactar desde el panel de administración.",
     },

@@ -41,6 +41,19 @@ test("ciclo completo de una obra desde el panel", async ({ page }) => {
     editUrl = page.url();
   });
 
+  // Por nombre: en esta pantalla hay dos listas, la de fotos y la del
+  // progreso de la subida.
+  const listaFotos = page.getByRole("list", { name: "Fotos de la obra" });
+
+  // La subida arranca al elegir el fichero: no hay botón que pulsar. El texto
+  // alternativo se pone después, foto a foto, en la propia lista.
+  const describirFoto = async (indice: number, texto: string) => {
+    const foto = listaFotos.locator("> li").nth(indice);
+    await foto.getByLabel(/^Descripción de la foto \d+$/).fill(texto);
+    await foto.getByRole("button", { name: "Guardar" }).click();
+    await expect(page.getByAltText(texto)).toBeVisible();
+  };
+
   await test.step("subir una foto", async () => {
     await expect(page.getByRole("heading", { name: "Fotos (0)" })).toBeVisible();
 
@@ -49,45 +62,56 @@ test("ciclo completo de una obra desde el panel", async ({ page }) => {
       mimeType: "image/png",
       buffer: await samplePaintingPng({ r: 120, g: 60, b: 40 }),
     });
-    await page
-      .getByPlaceholder("Descripción para lectores de pantalla (opcional)")
-      .fill("Obra de prueba");
-    await page.getByRole("button", { name: "Subir foto" }).click();
 
     await expect(page.getByRole("heading", { name: "Fotos (1)" })).toBeVisible();
-    await expect(page.getByAltText("Obra de prueba")).toBeVisible();
+    await describirFoto(0, "Obra de prueba");
     await expect(page.getByText("Principal")).toBeVisible();
   });
 
-  await test.step("reordenar las fotos y renombrar una", async () => {
-    await page.getByLabel("Fichero de imagen").setInputFiles({
-      name: "segunda.png",
-      mimeType: "image/png",
-      buffer: await samplePaintingPng({ r: 30, g: 90, b: 140 }),
-    });
-    await page
-      .getByPlaceholder("Descripción para lectores de pantalla (opcional)")
-      .fill("Segunda foto");
-    await page.getByRole("button", { name: "Subir foto" }).click();
+  await test.step("subir dos fotos de una vez", async () => {
+    await page.getByLabel("Fichero de imagen").setInputFiles([
+      {
+        name: "segunda.png",
+        mimeType: "image/png",
+        buffer: await samplePaintingPng({ r: 30, g: 90, b: 140 }),
+      },
+      {
+        name: "tercera.png",
+        mimeType: "image/png",
+        buffer: await samplePaintingPng({ r: 200, g: 180, b: 120 }),
+      },
+    ]);
 
-    await expect(page.getByRole("heading", { name: "Fotos (2)" })).toBeVisible();
+    // Van en serie, así que la cuenta sube a tres cuando terminan las dos.
+    await expect(page.getByRole("heading", { name: "Fotos (3)" })).toBeVisible({
+      timeout: 60_000,
+    });
+    await describirFoto(2, "Tercera foto");
+  });
+
+  await test.step("reordenar las fotos y renombrar una", async () => {
+    await describirFoto(1, "Segunda foto");
 
     // evaluateAll lee el DOM al instante, sin reintentos: tras el envío del
     // formulario hay que esperar a que la revalidación del Server Action
     // termine de repintar antes de comprobar el orden.
     const photoAlts = () =>
-      page
-        .locator("ul li img")
+      listaFotos
+        .locator("li img")
         .evaluateAll((imgs) => imgs.map((img) => img.getAttribute("alt")));
 
-    await expect.poll(photoAlts).toEqual(["Obra de prueba", "Segunda foto"]);
+    await expect
+      .poll(photoAlts)
+      .toEqual(["Obra de prueba", "Segunda foto", "Tercera foto"]);
 
-    const secondPhoto = page
-      .locator("li")
+    const secondPhoto = listaFotos
+      .locator("> li")
       .filter({ has: page.getByAltText("Segunda foto") });
     await secondPhoto.getByRole("button", { name: /^Adelantar foto \d+$/ }).click();
 
-    await expect.poll(photoAlts).toEqual(["Segunda foto", "Obra de prueba"]);
+    await expect
+      .poll(photoAlts)
+      .toEqual(["Segunda foto", "Obra de prueba", "Tercera foto"]);
 
     await secondPhoto
       .getByLabel(/^Descripción de la foto \d+$/)
@@ -110,7 +134,7 @@ test("ciclo completo de una obra desde el panel", async ({ page }) => {
   });
 
   await test.step("moverla de sitio y devolverla", async () => {
-    await page.goto("/admin");
+    await page.goto("/admin/obras");
     await expect(page.locator(adminListLinks)).toHaveText([
       ...seededTitles,
       TITLE,
@@ -146,14 +170,24 @@ test("ciclo completo de una obra desde el panel", async ({ page }) => {
     expect(response?.status()).toBe(404);
   });
 
-  await test.step("borrarla junto a sus fotos", async () => {
+  await test.step("mandarla a la papelera y vaciarla", async () => {
     await page.goto(editUrl);
 
     page.once("dialog", (dialog) => dialog.accept());
     await page.getByRole("button", { name: "Borrar esta obra" }).click();
 
-    await expect(page).toHaveURL(/\/admin$/);
+    // Ya no se borra de golpe: va a la papelera y se puede recuperar.
+    await expect(page).toHaveURL(/\/admin\/obras\?papelera=si$/);
+
+    await page.goto("/admin/obras");
     await expect(page.locator(adminListLinks)).toHaveText(seededTitles);
+
+    // Se vacía para no dejar rastro a los demás ficheros de la suite.
+    await page.goto("/admin/obras?papelera=si");
+    const fila = page.locator("main ul > li", { hasText: TITLE });
+    page.once("dialog", (dialog) => dialog.accept());
+    await fila.getByRole("button", { name: "Borrar ya" }).click();
+    await expect(page.getByText(TITLE)).toHaveCount(0);
   });
 });
 

@@ -29,6 +29,7 @@ export function ArtistForm({
     bio: string;
     email: string;
     instagram: string;
+    showSoldPaintings: boolean;
   };
 }) {
   const [state, formAction] = useActionState<ActionState, FormData>(
@@ -115,6 +116,28 @@ export function ArtistForm({
           />
         </div>
       </div>
+
+      <fieldset className="rounded border border-[color:var(--color-canvas-dim)] bg-white p-4">
+        <legend className="px-2 text-sm font-medium">Galería pública</legend>
+        <label className="flex items-start gap-3" htmlFor="showSoldPaintings">
+          <input
+            id="showSoldPaintings"
+            name="showSoldPaintings"
+            type="checkbox"
+            defaultChecked={values.showSoldPaintings}
+            className="mt-1"
+          />
+          <span>
+            Mostrar las obras vendidas
+            <span className="block text-sm text-[color:var(--color-ink-soft)]">
+              Marcado, siguen en el catálogo con el sello «Vendido» y sin
+              formulario de consulta: enseñan trayectoria. Sin marcar,
+              desaparecen de la galería, de la sala y del buscador en cuanto
+              las marques como vendidas.
+            </span>
+          </span>
+        </label>
+      </fieldset>
 
       <div>
         <Submit />

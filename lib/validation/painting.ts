@@ -52,6 +52,11 @@ export const paintingSchema = z.object({
   status: z.enum(PAINTING_STATUSES).default("AVAILABLE"),
   published: z.coerce.boolean().default(true),
   featured: z.coerce.boolean().default(false),
+  // Cadena vacía = "sin serie". El desplegable siempre manda algo.
+  seriesId: z
+    .union([z.literal(""), z.string().trim().min(1)])
+    .optional()
+    .transform((valor) => (valor === "" || valor === undefined ? null : valor)),
 });
 
 export type PaintingInput = z.infer<typeof paintingSchema>;
@@ -62,6 +67,34 @@ export const artistSchema = z.object({
   bio: z.string().trim().max(8000).default(""),
   email: z.union([z.literal(""), z.string().email()]).default(""),
   instagram: z.string().trim().max(120).default(""),
+  // Ajuste del sitio, no dato de la artista, pero comparte formulario: una
+  // casilla desmarcada no viaja en el FormData, así que la acción la traduce
+  // a booleano antes de validar.
+  showSoldPaintings: z.boolean().default(true),
+});
+
+export const seriesSchema = z.object({
+  title: z.string().trim().min(1, "El título es obligatorio").max(160),
+  description: z.string().trim().max(4000).optional().default(""),
+  published: z.coerce.boolean().default(true),
+});
+
+export const journalSchema = z.object({
+  title: z.string().trim().min(1, "El título es obligatorio").max(200),
+  summary: z.string().trim().max(500).optional().default(""),
+  body: z.string().trim().max(20000).optional().default(""),
+  published: z.coerce.boolean().default(false),
+  // Fecha en formato del input date; vacía = hoy.
+  publishedAt: z
+    .union([z.literal(""), z.string().regex(/^\d{4}-\d{2}-\d{2}$/)])
+    .optional()
+    .transform((valor) =>
+      valor === "" || valor === undefined ? new Date() : new Date(valor),
+    ),
+  paintingId: z
+    .union([z.literal(""), z.string().trim().min(1)])
+    .optional()
+    .transform((valor) => (valor === "" || valor === undefined ? null : valor)),
 });
 
 export const inquirySchema = z.object({
