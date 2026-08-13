@@ -9,7 +9,7 @@ services:
     command: sh -c "pnpm prisma generate && pnpm prisma migrate deploy && pnpm test"
     environment:
       NODE_ENV: test
-      DATABASE_URL: postgresql://art:art@postgres-test:5432/art_cris_test?schema=public
+      DATABASE_URL: postgresql://art:art@postgres-test:5432/casamargarita_test?schema=public
       UPLOADS_DIR: /tmp/uploads
       SESSION_SECRET: test-secret-test-secret-test-secret-32
       ADMIN_EMAIL: test@example.com
@@ -31,7 +31,7 @@ services:
     command: sh -c "pnpm exec playwright install chromium && pnpm prisma generate && pnpm prisma migrate deploy && pnpm exec playwright test"
     environment:
       NODE_ENV: test
-      DATABASE_URL: postgresql://art:art@postgres-test:5432/art_cris_test?schema=public
+      DATABASE_URL: postgresql://art:art@postgres-test:5432/casamargarita_test?schema=public
       UPLOADS_DIR: /tmp/uploads
       SESSION_SECRET: test-secret-test-secret-test-secret-32
       ADMIN_EMAIL: test@example.com
@@ -49,11 +49,11 @@ services:
     environment:
       POSTGRES_USER: art
       POSTGRES_PASSWORD: art
-      POSTGRES_DB: art_cris_test
+      POSTGRES_DB: casamargarita_test
     tmpfs:
       - /var/lib/postgresql/data # efímero: cada run parte de cero
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U art -d art_cris_test"]
+      test: ["CMD-SHELL", "pg_isready -U art -d casamargarita_test"]
       interval: 3s
       timeout: 3s
       retries: 15

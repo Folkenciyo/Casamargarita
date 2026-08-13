@@ -14,6 +14,24 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: ["lib/**", "app/api/**"],
+      // El umbral mide la lógica que se puede probar aislada. Lo que queda
+      // fuera no está sin probar: se verifica en la suite E2E, contra Postgres
+      // y ficheros de verdad, que es donde esas piezas significan algo.
+      exclude: [
+        "lib/generated/**", // cliente que genera Prisma, no es código nuestro
+        "lib/db.ts", // instancia el cliente y nada más
+        "lib/admin/actions.ts", // Server Actions → e2e/admin/
+        "lib/admin/series-actions.ts", // Server Actions → e2e/admin/series.spec.ts
+        "lib/public/actions.ts", // Server Actions → e2e/public/inquiry.spec.ts
+        // Consultas a Postgres envueltas en el caché de datos: `select` y
+        // `where`, sin lógica que aislar —la que había vive en lib/catalog.ts,
+        // con sus tests—. Lo que importa de ellas es que lleguen a la pantalla
+        // los datos correctos, y eso lo mira e2e/public/.
+        "lib/public/queries.ts",
+        "lib/auth/guard.ts", // un redirect → e2e/admin/login.spec.ts
+        "app/api/admin/**", // → e2e/admin/login-api.spec.ts
+        "app/api/uploads/**", // servir ficheros → e2e/public/painting.spec.ts
+      ],
       thresholds: { lines: 80, functions: 80, branches: 70, statements: 80 },
     },
   },

@@ -3,6 +3,53 @@ import slugify from "slugify";
 export const PRICE_ON_REQUEST = "Precio a consultar";
 
 /**
+ * Qué obra ve el público. `published` es la decisión obra a obra; el
+ * interruptor de vendidas es la decisión de conjunto.
+ *
+ * Solo esconde las vendidas: "no está a la venta" se queda siempre visible
+ * porque es obra de portfolio (colección privada, encargo entregado) y
+ * ocultarla bajo una casilla que dice «vendidas» sorprendería a cualquiera.
+ */
+export type PaintingVisibilityFilter = {
+  published: true;
+  /** En la papelera: invisible en todas partes hasta que se restaure o caduque. */
+  deletedAt: null;
+  status?: { not: "SOLD" };
+};
+
+export function visiblePaintingFilter(
+  showSold: boolean,
+): PaintingVisibilityFilter {
+  const base = { published: true, deletedAt: null } as const;
+  return showSold ? base : { ...base, status: { not: "SOLD" } };
+}
+
+/** Lo que hace falta saber de una obra para decidir si se puede enlazar. */
+export type ObraEnlazable = {
+  slug: string;
+  title: string;
+  published: boolean;
+  deletedAt: Date | null;
+};
+
+/**
+ * El enlace a la obra de la que habla una entrada del diario, o `null` si ya
+ * no se puede enseñar.
+ *
+ * Vive aquí y no en cada consulta porque el listado del diario y la entrada
+ * suelta llegaron a discrepar: uno miraba `published` y el otro además la
+ * papelera, así que una obra borrada seguía enlazada desde el listado.
+ */
+export function enlaceAObra(
+  painting: ObraEnlazable | null | undefined,
+): { slug: string; title: string } | null {
+  if (!painting || !painting.published || painting.deletedAt !== null) {
+    return null;
+  }
+  return { slug: painting.slug, title: painting.title };
+}
+
+/**
  * Formatea un precio guardado en céntimos. `null` = precio a consultar.
  * Sin decimales: los precios de obra son cifras redondas.
  */
@@ -10,8 +57,10 @@ export function formatPrice(
   cents: number | null | undefined,
   currency = "EUR",
   locale = "es-ES",
+  /** Texto para "sin precio". Se pasa traducido desde las vistas en inglés. */
+  onRequest = PRICE_ON_REQUEST,
 ): string {
-  if (cents === null || cents === undefined) return PRICE_ON_REQUEST;
+  if (cents === null || cents === undefined) return onRequest;
   if (!Number.isFinite(cents) || cents < 0) {
     throw new RangeError(`Precio inválido: ${cents}`);
   }

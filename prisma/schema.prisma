@@ -17,6 +17,23 @@ enum PaintingStatus {
   NOT_FOR_SALE
 }
 
+/// Agrupación de obra con texto propio y dirección web propia: "Marinas de
+/// invierno" pesa más que veinticuatro cuadros sueltos.
+model Series {
+  id          String     @id @default(cuid())
+  slug        String     @unique
+  title       String
+  description String     @default("")
+  published   Boolean    @default(true)
+  /// Orden manual, como en las obras
+  position    Int        @default(0)
+  paintings   Painting[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([published, position])
+}
+
 model Painting {
   id          String         @id @default(cuid())
   slug        String         @unique
@@ -34,13 +51,25 @@ model Painting {
   featured    Boolean        @default(false)
   /// Orden manual en la galería
   position    Int            @default(0)
+  /// Serie a la que pertenece. Opcional: hay obra suelta, y borrar una serie
+  /// no puede llevarse las obras por delante (onDelete: SetNull).
+  seriesId    String?
+  series      Series?        @relation(fields: [seriesId], references: [id], onDelete: SetNull)
   images      Image[]
   inquiries   Inquiry[]
+  views       PaintingView[]
+  journal     JournalEntry[]
+  /// Papelera: cuándo se mandó a borrar. Mientras tenga fecha no se ve en
+  /// ninguna parte —ni pública ni panel— pero sus ficheros siguen en disco y
+  /// se puede deshacer. El borrado definitivo lo hace el barrido a los 30 días.
+  deletedAt   DateTime?
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
   @@index([published, position])
   @@index([featured])
+  @@index([seriesId, position])
+  @@index([deletedAt])
 }
 
 model Image {
@@ -64,6 +93,135 @@ model Image {
   @@index([paintingId, position])
 }
 
+/// Suscriptor del aviso de obra nueva.
+///
+/// Doble confirmación: hasta que no se pulsa el enlace del correo, la fila
+/// existe pero `confirmedAt` es null y no recibe nada. Es lo que exige el
+/// RGPD y, además, lo único que evita que cualquiera apunte a otro.
+model Subscriber {
+  id          String    @id @default(cuid())
+  email       String    @unique
+  /// Token del enlace de confirmación y del de baja. Se rota al confirmar.
+  token       String    @unique
+  confirmedAt DateTime?
+  createdAt   DateTime  @default(now())
+  /// Desde qué idioma se apuntó, para escribirle en el suyo.
+  lang        String    @default("es")
+
+  @@index([confirmedAt])
+}
+
+/// Petición de encargo. Vive aparte de Inquiry porque lleva otros datos y se
+/// atiende de otra manera: aquí hay un presupuesto que dar, no una respuesta.
+model Commission {
+  id          String    @id @default(cuid())
+  name        String
+  email       String
+  /// Qué quiere, con sus palabras.
+  brief       String
+  /// Medidas orientativas que pide, en centímetros.
+  widthCm     Int?
+  heightCm    Int?
+  /// Para cuándo lo necesita, si tiene fecha.
+  deadline    String    @default("")
+  createdAt   DateTime  @default(now())
+  readAt      DateTime?
+  answeredAt  DateTime?
+  note        String    @default("")
+
+  @@index([answeredAt, createdAt])
+}
+
+enum MilestoneKind {
+  EXHIBITION
+  AWARD
+  COLLECTION
+  PRESS
+}
+
+/// Trayectoria: exposiciones, premios, colecciones y prensa.
+///
+/// Quien duda entre dos pintores no compara cuadros, compara credibilidad.
+/// Esto es lo que faltaba en la ficha de artista.
+model Milestone {
+  id        String        @id @default(cuid())
+  kind      MilestoneKind
+  title     String
+  /// Dónde: sala, ciudad, medio. Libre a propósito.
+  place     String        @default("")
+  /// Solo el año: es lo que se cita en un currículum de artista.
+  year      Int
+  url       String        @default("")
+  published Boolean       @default(true)
+  position  Int           @default(0)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([published, year])
+}
+
+/// Entrada del diario de taller: una obra contada por etapas, o cualquier
+/// otra cosa que merezca texto propio.
+///
+/// Es lo único de esta web que no puede escribir nadie más, así que tiene
+/// entidad propia y no es un campo más de la obra.
+model JournalEntry {
+  id          String    @id @default(cuid())
+  slug        String    @unique
+  title       String
+  /// Entradilla: lo que se lee en el listado y lo que va en la metadata.
+  summary     String    @default("")
+  /// Cuerpo en texto plano con saltos de línea. Sin editor enriquecido: se
+  /// escribe como se escribe un correo.
+  body        String    @default("")
+  published   Boolean   @default(false)
+  /// Fecha que se muestra; se puede adelantar o atrasar respecto a createdAt.
+  publishedAt DateTime  @default(now())
+  /// Obra de la que habla la entrada, si habla de una.
+  paintingId  String?
+  painting    Painting? @relation(fields: [paintingId], references: [id], onDelete: SetNull)
+  images      JournalImage[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([published, publishedAt])
+}
+
+/// Fotos de una entrada del diario. Mismo pipeline que las de obra.
+model JournalImage {
+  id          String       @id @default(cuid())
+  entryId     String
+  entry       JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  basePath    String
+  width       Int
+  height      Int
+  widths      Int[]
+  blurDataUrl String
+  alt         String?
+  /// Pie de foto: "primera mancha", "veladuras", "el barniz".
+  caption     String       @default("")
+  position    Int          @default(0)
+  createdAt   DateTime     @default(now())
+
+  @@index([entryId, position])
+}
+
+/// Visitas a la ficha de una obra, agregadas por día.
+///
+/// Sin cookies, sin identificadores y sin terceros: solo un contador por obra
+/// y fecha. No se puede reconstruir quién vio qué, así que no hace falta
+/// banner de consentimiento ni hay nada que le interese a nadie si se filtra.
+model PaintingView {
+  paintingId String
+  painting   Painting @relation(fields: [paintingId], references: [id], onDelete: Cascade)
+  /// Día natural, sin hora.
+  day        DateTime @db.Date
+  count      Int      @default(0)
+
+  @@id([paintingId, day])
+  @@index([day])
+}
+
 /// Fila única con id "singleton"
 model Artist {
   id           String   @id @default("singleton")
@@ -79,6 +237,10 @@ model Artist {
   portraitBlurDataUrl String?
   email        String?
   instagram    String?
+  /// Ajuste del sitio: si es false, las obras vendidas o no venales
+  /// desaparecen del catálogo público. La fila singleton hace de tabla de
+  /// ajustes; no compensa una tabla propia para un puñado de interruptores.
+  showSoldPaintings Boolean @default(true)
   updatedAt    DateTime @updatedAt
 }
 
@@ -91,6 +253,12 @@ model Inquiry {
   message    String
   createdAt  DateTime  @default(now())
   readAt     DateTime?
+  /// Leída no es lo mismo que atendida: esto marca que ya se contestó.
+  answeredAt DateTime?
+  /// Nota privada de la artista ("pidió verla en persona"). No sale nunca de
+  /// aquí: no se envía por correo ni aparece en la web.
+  note       String    @default("")
 
   @@index([readAt, createdAt])
+  @@index([answeredAt])
 }

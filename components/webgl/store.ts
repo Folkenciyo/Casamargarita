@@ -43,7 +43,7 @@ export function randomAngle(): number {
   return (Math.random() - 0.5) * 0.9;
 }
 
-export const INTRO_SEEN_KEY = "art-cris:intro-seen";
+export const INTRO_SEEN_KEY = "casamargarita:intro-seen";
 export const COVER_MS = 420;
 export const REVEAL_MS = 520;
 export const INTRO_MS = 2100;

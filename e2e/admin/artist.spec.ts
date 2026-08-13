@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { SEEDED_ARTIST, TEST_IPS } from "../fixtures/test-data";
+import { SEEDED_ARTIST, seeded, TEST_IPS } from "../fixtures/test-data";
 
 test.use({ extraHTTPHeaders: { "x-forwarded-for": TEST_IPS.adminArtist } });
 
 const NEW_BIO = "Biografía reescrita por la suite E2E.";
-const NEW_INSTAGRAM = "@cristina.e2e";
+const NEW_INSTAGRAM = "@casamargarita.e2e";
 
 /**
  * Solo se tocan biografía e Instagram: el nombre y el lema los dan por ciertos
@@ -46,6 +46,45 @@ test("la ficha de artista se edita y se refleja en la web", async ({ page }) => 
     await page.goto("/artista");
     await expect(page.getByText(SEEDED_ARTIST.bio)).toBeVisible();
   });
+});
+
+/**
+ * El interruptor afecta a todo el catálogo, así que este test lo vuelve a
+ * dejar marcado pase lo que pase: los tests públicos cuentan con que la obra
+ * vendida se ve.
+ */
+test("el interruptor de vendidas las saca del catálogo público", async ({
+  page,
+}) => {
+  const sold = seeded("bodegon-vendido");
+  const available = seeded("amanecer-en-el-estudio");
+
+  try {
+    await page.goto("/admin/artista");
+    await page.getByLabel("Mostrar las obras vendidas").uncheck();
+    await page.getByRole("button", { name: "Guardar" }).click();
+    await expect(page.getByRole("status")).toContainText("Ficha guardada");
+
+    await page.goto("/galeria");
+    await expect(page.locator(`a[href="/obra/${sold.slug}"]`)).toHaveCount(0);
+    await expect(
+      page.locator(`a[href="/obra/${available.slug}"]`).first(),
+    ).toBeVisible();
+
+    // Y su ficha deja de existir: un enlace viejo da 404, no una obra fantasma.
+    const response = await page.goto(`/obra/${sold.slug}`);
+    expect(response?.status()).toBe(404);
+  } finally {
+    await page.goto("/admin/artista");
+    await page.getByLabel("Mostrar las obras vendidas").check();
+    await page.getByRole("button", { name: "Guardar" }).click();
+    // Sin esperar al acuse, la navegación siguiente puede adelantar a la
+    // acción y pedir la galería con el ajuste todavía sin escribir.
+    await expect(page.getByRole("status")).toContainText("Ficha guardada");
+  }
+
+  await page.goto("/galeria");
+  await expect(page.locator(`a[href="/obra/${sold.slug}"]`)).toBeVisible();
 });
 
 test("el nombre de la artista es obligatorio", async ({ page }) => {

@@ -1,0 +1,80 @@
+name: CI
+
+# Mismo contrato que en local: nada corre en el host, todo va por los composes.
+# Lo que falla aquí falla igual en tu máquina con el comando de al lado.
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Lint · tipos · unitarios
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Construir la imagen de desarrollo
+        run: docker compose -f docker-compose.test.yml build test
+
+      - name: ESLint
+        run: docker compose -f docker-compose.test.yml run --rm --no-deps test pnpm lint
+
+      - name: TypeScript
+        run: >
+          docker compose -f docker-compose.test.yml run --rm --no-deps test
+          sh -c "pnpm prisma generate && pnpm typecheck"
+
+      - name: Tests unitarios con cobertura
+        run: >
+          docker compose -f docker-compose.test.yml run --rm test
+          sh -c "pnpm prisma generate && pnpm prisma migrate deploy && pnpm test:coverage"
+
+      - name: Guardar informe de cobertura
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  e2e:
+    name: Extremo a extremo
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Playwright
+        run: docker compose -f docker-compose.test.yml run --rm e2e
+
+      # La traza de un fallo vale más que el log: lleva capturas de cada paso.
+      - name: Guardar informe de Playwright
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  build:
+    name: Imagen de producción
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # Solo se comprueba que la imagen que despliega Dokploy se construye:
+      # el build de Next falla por cosas que ni el lint ni los tests ven.
+      - name: Construir la imagen final
+        run: docker build --target runner -t casamargarita:ci .

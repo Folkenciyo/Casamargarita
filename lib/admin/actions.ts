@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth/guard";
+import { CACHE_TAGS, invalidar } from "@/lib/cache";
 import { uniqueSlug } from "@/lib/catalog";
 import { prisma } from "@/lib/db";
 import {
@@ -17,10 +18,21 @@ import { artistSchema, paintingSchema } from "@/lib/validation/painting";
 export type ActionState = { error?: string; ok?: boolean };
 
 function refreshPublicViews(slug?: string) {
+  // Las vistas públicas leen del caché de datos: sin caducar la etiqueta, el
+  // cambio no se vería aunque se refresque la página.
+  invalidar(CACHE_TAGS.paintings);
   revalidatePath("/");
   revalidatePath("/galeria");
   revalidatePath("/admin");
+  revalidatePath("/admin/obras");
   if (slug) revalidatePath(`/obra/${slug}`);
+}
+
+/** La ficha, el retrato y los ajustes viven todos en la fila `singleton`. */
+function refreshArtist() {
+  invalidar(CACHE_TAGS.artist);
+  revalidatePath("/artista");
+  revalidatePath("/admin/artista");
 }
 
 function fieldsFrom(formData: FormData) {
@@ -35,8 +47,25 @@ function fieldsFrom(formData: FormData) {
     status: formData.get("status") || undefined,
     published: formData.get("published") === "on",
     featured: formData.get("featured") === "on",
+    // Cadena vacía = "sin serie"; el esquema la convierte en null.
+    seriesId: formData.get("seriesId") ?? "",
   };
 }
+
+/**
+ * Con dos pestañas abiertas se puede borrar una serie en una mientras se
+ * edita una obra en la otra. Sin esto, guardar reventaría con un error de
+ * clave foránea en crudo.
+ */
+async function serieInexistente(seriesId: string | null): Promise<boolean> {
+  if (!seriesId) return false;
+  return !(await prisma.series.findUnique({
+    where: { id: seriesId },
+    select: { id: true },
+  }));
+}
+
+const SERIE_PERDIDA = "Esa serie ya no existe. Vuelve a elegir una.";
 
 export async function createPainting(
   _state: ActionState,
@@ -47,6 +76,9 @@ export async function createPainting(
   const parsed = paintingSchema.safeParse(fieldsFrom(formData));
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Datos no válidos" };
+  }
+  if (await serieInexistente(parsed.data.seriesId)) {
+    return { error: SERIE_PERDIDA };
   }
 
   const slug = await uniqueSlug(parsed.data.title, async (candidate) =>
@@ -76,6 +108,9 @@ export async function updatePainting(
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Datos no válidos" };
   }
+  if (await serieInexistente(parsed.data.seriesId)) {
+    return { error: SERIE_PERDIDA };
+  }
 
   const painting = await prisma.painting.update({
     where: { id },
@@ -86,7 +121,62 @@ export async function updatePainting(
   return { ok: true };
 }
 
+/**
+ * Publicar u ocultar desde la lista, sin entrar en la ficha. Lee el valor
+ * actual en vez de recibirlo del formulario: así dos pestañas abiertas no
+ * pueden dejar la obra en un estado que ninguna de las dos quería.
+ */
+export async function togglePaintingPublished(id: string): Promise<void> {
+  await requireAdmin();
+
+  const current = await prisma.painting.findUniqueOrThrow({
+    where: { id },
+    select: { published: true },
+  });
+  const painting = await prisma.painting.update({
+    where: { id },
+    data: { published: !current.published },
+  });
+
+  revalidatePath("/admin/obras");
+  refreshPublicViews(painting.slug);
+}
+
+/**
+ * Mandar a la papelera. No borra nada: marca la fecha y la obra desaparece de
+ * la web y de la lista, pero sus fotos siguen en disco y se puede deshacer.
+ *
+ * El borrado de verdad lo hace `scripts/purge-trash.ts` pasados los días.
+ */
 export async function deletePainting(id: string): Promise<void> {
+  await requireAdmin();
+
+  const painting = await prisma.painting.update({
+    where: { id },
+    data: { deletedAt: new Date() },
+  });
+
+  refreshPublicViews(painting.slug);
+  redirect("/admin/obras?papelera=si");
+}
+
+export async function restorePainting(id: string): Promise<void> {
+  await requireAdmin();
+
+  const painting = await prisma.painting.update({
+    where: { id },
+    data: { deletedAt: null },
+  });
+
+  refreshPublicViews(painting.slug);
+  redirect(`/admin/obras/${painting.id}`);
+}
+
+/**
+ * Borrado definitivo desde la papelera, sin esperar a que caduque. Aquí sí
+ * desaparecen las fotos del disco y no hay vuelta atrás.
+ */
+export async function purgePainting(id: string): Promise<void> {
   await requireAdmin();
 
   const painting = await prisma.painting.delete({ where: { id } });
@@ -95,7 +185,7 @@ export async function deletePainting(id: string): Promise<void> {
   await deleteUploads(uploadsDir(), `paintings/${id}`);
 
   refreshPublicViews(painting.slug);
-  redirect("/admin");
+  redirect("/admin/obras?papelera=si");
 }
 
 export async function uploadPaintingImage(
@@ -220,6 +310,43 @@ export async function moveImage(
   refreshPublicViews();
 }
 
+/**
+ * Reordena todas las fotos de una obra de una vez, que es lo que hace falta
+ * al arrastrar: mover una pieza cambia la posición de varias.
+ *
+ * Se comprueba que los ids sean exactamente los de esta obra. Sin eso, una
+ * petición manipulada podría colar el id de una foto de otra obra y sacarla
+ * de su sitio.
+ */
+export async function reorderImages(
+  paintingId: string,
+  orderedIds: string[],
+): Promise<void> {
+  await requireAdmin();
+
+  const actuales = await prisma.image.findMany({
+    where: { paintingId },
+    select: { id: true },
+  });
+
+  const esperados = new Set(actuales.map((imagen) => imagen.id));
+  const recibidos = new Set(orderedIds);
+  const coinciden =
+    esperados.size === recibidos.size &&
+    orderedIds.every((id) => esperados.has(id));
+
+  if (!coinciden) return;
+
+  await prisma.$transaction(
+    orderedIds.map((id, posicion) =>
+      prisma.image.update({ where: { id }, data: { position: posicion } }),
+    ),
+  );
+
+  revalidatePath(`/admin/obras/${paintingId}`);
+  refreshPublicViews();
+}
+
 export async function updateImageAlt(
   imageId: string,
   formData: FormData,
@@ -278,6 +405,7 @@ export async function updateArtist(
     bio: formData.get("bio") ?? "",
     email: formData.get("email") ?? "",
     instagram: formData.get("instagram") ?? "",
+    showSoldPaintings: formData.get("showSoldPaintings") === "on",
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Datos no válidos" };
@@ -289,8 +417,9 @@ export async function updateArtist(
     create: { id: "singleton", ...parsed.data },
   });
 
-  revalidatePath("/artista");
-  revalidatePath("/admin/artista");
+  refreshArtist();
+  // El interruptor de vendidas cambia lo que ve todo el catálogo.
+  refreshPublicViews();
   return { ok: true };
 }
 
@@ -344,8 +473,7 @@ export async function uploadArtistPortrait(
     await deleteUploads(uploadsDir(), existing.portraitPath);
   }
 
-  revalidatePath("/artista");
-  revalidatePath("/admin/artista");
+  refreshArtist();
   return { ok: true };
 }
 
@@ -370,6 +498,5 @@ export async function deleteArtistPortrait(): Promise<void> {
   });
   await deleteUploads(uploadsDir(), artist.portraitPath);
 
-  revalidatePath("/artista");
-  revalidatePath("/admin/artista");
+  refreshArtist();
 }

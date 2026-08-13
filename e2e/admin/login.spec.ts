@@ -38,7 +38,7 @@ test("con las credenciales correctas se entra y se puede salir", async ({
   await page.getByLabel("Contraseña").fill(TEST_ADMIN.password);
   await page.getByRole("button", { name: "Entrar" }).click();
 
-  await expect(page.getByRole("heading", { name: /^Obras \(/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Resumen" })).toBeVisible();
 
   await page.getByRole("button", { name: "Salir" }).click();
   await expect(page).toHaveURL(/\/admin\/login$/);

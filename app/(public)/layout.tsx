@@ -1,17 +1,17 @@
 import Link from "next/link";
+import { LanguageSwitch } from "@/components/public/LanguageSwitch";
 import { OilTransitions } from "@/components/webgl/OilTransitions";
-import { prisma } from "@/lib/db";
+import { cabeceraPublica } from "@/lib/public/queries";
+import { SITE_NAME } from "@/lib/site";
 
 export default async function PublicLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const artist = await prisma.artist.findUnique({
-    where: { id: "singleton" },
-    select: { name: true, instagram: true, email: true },
-  });
-  const name = artist?.name ?? "Galería de óleos";
+  const artist = await cabeceraPublica();
+  const name = artist.name || SITE_NAME;
+  const hayDiario = artist.hayDiario;
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -25,9 +25,27 @@ export default async function PublicLayout({
             <Link href="/galeria" className="hover:text-[color:var(--color-oil)]">
               Galería
             </Link>
+            {/* El diario solo se anuncia cuando hay algo que leer: un enlace a
+                una página vacía resta más de lo que suma. */}
+            {hayDiario ? (
+              <Link href="/diario" className="hover:text-[color:var(--color-oil)]">
+                Diario
+              </Link>
+            ) : null}
+            <Link href="/encargos" className="hover:text-[color:var(--color-oil)]">
+              Encargos
+            </Link>
             <Link href="/artista" className="hover:text-[color:var(--color-oil)]">
               La artista
             </Link>
+            <Link
+              href="/buscar"
+              aria-label="Buscar"
+              className="hover:text-[color:var(--color-oil)]"
+            >
+              Buscar
+            </Link>
+            <LanguageSwitch />
           </div>
         </nav>
       </header>
@@ -41,10 +59,10 @@ export default async function PublicLayout({
           <span>
             © {new Date().getFullYear()} {name}
           </span>
-          {artist?.email ? (
+          {artist.email ? (
             <a href={`mailto:${artist.email}`}>{artist.email}</a>
           ) : null}
-          {artist?.instagram ? (
+          {artist.instagram ? (
             <a
               href={`https://instagram.com/${artist.instagram.replace("@", "")}`}
               rel="noopener noreferrer"
