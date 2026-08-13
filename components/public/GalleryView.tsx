@@ -5,16 +5,15 @@ import {
 } from "@/components/public/ExhibitionMode";
 import { PaintingCard } from "@/components/public/PaintingCard";
 import { formatDimensions, formatPrice } from "@/lib/catalog";
-import { prisma } from "@/lib/db";
 import { FORMATOS } from "@/lib/formats";
 import { diccionario, ruta, type Idioma } from "@/lib/i18n/dictionaries";
 import {
   galeriaHref,
-  galeriaWhere,
   hayFiltros,
   parseFiltrosGaleria,
 } from "@/lib/public/gallery-filters";
-import { publicPaintingWhere } from "@/lib/settings";
+import { paginaGaleria, seriesPublicadas } from "@/lib/public/queries";
+import { ajustesPublicos } from "@/lib/settings";
 import { STATUS_LABELS } from "@/lib/validation/painting";
 
 // Múltiplo de 2 y 3: la última fila queda completa tanto en dos columnas
@@ -48,31 +47,19 @@ export async function GalleryView({
   const enlace = (cambios: Partial<typeof filtros>) =>
     galeriaHref(filtros, cambios, lang);
 
-  const [visible, series] = await Promise.all([
-    publicPaintingWhere(),
-    prisma.series.findMany({
-      where: { published: true },
-      orderBy: { position: "asc" },
-      select: { id: true, slug: true, title: true },
-    }),
+  const [{ showSoldPaintings }, series] = await Promise.all([
+    ajustesPublicos(),
+    seriesPublicadas(),
   ]);
 
   const serieActiva = series.find((serie) => serie.slug === filtros.serie) ?? null;
 
-  // El filtro de visibilidad va primero: lo que el visitante añade solo puede
-  // restringir más, nunca destapar obra que la artista ha ocultado.
-  const where = { ...visible, ...galeriaWhere(filtros, serieActiva?.id ?? null) };
-
-  const [total, paintings] = await Promise.all([
-    prisma.painting.count({ where }),
-    prisma.painting.findMany({
-      where,
-      orderBy: { position: "asc" },
-      skip: (filtros.pagina - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
-      include: { images: { where: { isPrimary: true }, take: 1 } },
-    }),
-  ]);
+  const { total, obras: paintings } = await paginaGaleria(
+    showSoldPaintings,
+    filtros,
+    serieActiva?.id ?? null,
+    PAGE_SIZE,
+  );
 
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const filtrada = hayFiltros(filtros);

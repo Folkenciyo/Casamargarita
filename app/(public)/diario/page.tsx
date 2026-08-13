@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PaintingImage } from "@/components/public/PaintingImage";
-import { prisma } from "@/lib/db";
+import { entradasDiario } from "@/lib/public/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -18,14 +18,7 @@ const formatoFecha = new Intl.DateTimeFormat("es-ES", {
 });
 
 export default async function JournalPage() {
-  const entradas = await prisma.journalEntry.findMany({
-    where: { published: true },
-    orderBy: { publishedAt: "desc" },
-    include: {
-      images: { orderBy: { position: "asc" }, take: 1 },
-      painting: { select: { slug: true, title: true, published: true } },
-    },
-  });
+  const entradas = await entradasDiario();
 
   return (
     <>
@@ -69,7 +62,7 @@ export default async function JournalPage() {
 
                 <div>
                   <p className="tabular text-xs tracking-[0.2em] text-[color:var(--color-ink-soft)] uppercase">
-                    {formatoFecha.format(entrada.publishedAt)}
+                    {formatoFecha.format(new Date(entrada.publishedAt))}
                   </p>
                   <h2 className="display mt-2 text-2xl">
                     <Link href={`/diario/${entrada.slug}`}>{entrada.title}</Link>
@@ -79,7 +72,7 @@ export default async function JournalPage() {
                       {entrada.summary}
                     </p>
                   ) : null}
-                  {entrada.painting?.published ? (
+                  {entrada.painting ? (
                     <p className="mt-3 text-sm">
                       Sobre{" "}
                       <Link

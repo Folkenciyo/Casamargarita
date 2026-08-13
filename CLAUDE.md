@@ -33,8 +33,19 @@ castellano, con sus tildes.
   Next sobra aquí.
 - **Nada de react-three-fiber.** Su `<Canvas>` no llega a crear el renderer en
   este proyecto. `components/webgl/` usa WebGL y three.js directos.
-- **`export const dynamic = "force-dynamic"` en las páginas públicas.** Postgres
-  vive en otro contenedor y no está disponible durante el build.
+- **`export const dynamic = "force-dynamic"` en las páginas públicas.** Es una
+  red, no lo que hace dinámico el sitio: el `<html lang>` del layout raíz sale
+  de una cabecera y eso ya impide prerenderizar cualquier página. Comprobado
+  con un build sin Postgres alcanzable: pasa, y todas las rutas salen `ƒ`.
+  Mientras el idioma se lea de la cabecera, ninguna página pública puede ser
+  estática, y quitar la directiva no cambiaría nada.
+- **Las lecturas públicas van por `lib/public/queries.ts`, no por `prisma`
+  suelto.** Están envueltas en el caché de datos con etiquetas (`lib/cache.ts`):
+  el HTML se rehace en cada visita, pero Postgres solo se toca cuando algo
+  caduca. Toda escritura del panel llama a `invalidar(...)` con sus etiquetas;
+  si te saltas eso, el cambio no se ve. **De ahí no puede salir una `Date`**:
+  Next guarda con `JSON.stringify` y volvería como texto con el tipo mintiendo,
+  así que las fechas se devuelven ya en ISO.
 - **El limitador de intentos es en memoria.** Vale para una instancia, que es lo
   que despliega Dokploy. Si algún día hay réplicas, va a Redis.
 - **Los ajustes del sitio viven en la fila `singleton` de `Artist`.** Son dos
@@ -58,7 +69,8 @@ castellano, con sus tildes.
 | Qué obra ve el público | `lib/settings.ts` + `lib/catalog.ts` (`visiblePaintingFilter`) |
 | Los filtros de la lista del panel | `lib/admin/painting-filters.ts` (puro y con tests) |
 | Los filtros de la galería pública | `lib/public/gallery-filters.ts` + `lib/formats.ts` |
-| Cualquier escritura del panel | `lib/admin/actions.ts` y `series-actions.ts` — toda Server Action empieza por `requireAdmin()` |
+| Cualquier lectura del sitio público | `lib/public/queries.ts` — y su etiqueta en `lib/cache.ts` |
+| Cualquier escritura del panel | `lib/admin/actions.ts` y `series-actions.ts` — toda Server Action empieza por `requireAdmin()` y termina invalidando sus etiquetas |
 | El pipeline de imágenes | `lib/images/pipeline.ts` (los anchos están duplicados en `urls.ts` a propósito; un test lo vigila) |
 | Identidad del sitio (título, og:image) | `lib/site.ts` + variables `PUBLIC_SITE_*` |
 | Cabeceras de seguridad o la CSP | `lib/http/security-headers.ts`, aplicadas en `middleware.ts` |

@@ -3,6 +3,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const findUnique = vi.fn();
 vi.mock("@/lib/db", () => ({ prisma: { artist: { findUnique } } }));
 
+// Fuera del servidor de Next no hay caché de datos donde guardar nada y
+// `unstable_cache` avisa lanzando. Aquí se prueba la lógica; que la consulta
+// se registre con su etiqueta lo comprueba lib/cache.test.ts.
+vi.mock("@/lib/cache", () => ({
+  CACHE_TAGS: { artist: "artist" },
+  cacheado: (
+    _clave: string,
+    _tags: readonly string[],
+    consulta: (...args: unknown[]) => Promise<unknown>,
+  ) => consulta,
+}));
+
 const { getSiteSettings, publicPaintingWhere } = await import("./settings");
 
 beforeEach(() => {

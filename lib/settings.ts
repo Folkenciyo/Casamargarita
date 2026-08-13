@@ -1,3 +1,4 @@
+import { CACHE_TAGS, cacheado } from "@/lib/cache";
 import {
   visiblePaintingFilter,
   type PaintingVisibilityFilter,
@@ -25,8 +26,19 @@ export async function getSiteSettings(): Promise<SiteSettings> {
   return { showSoldPaintings: artist?.showSoldPaintings ?? true };
 }
 
+/**
+ * Los ajustes, cacheados. Es la consulta que más se repite del sitio —la pide
+ * casi todas las vistas públicas— y cambia dos veces al año. Es la que deben
+ * usar las vistas; `getSiteSettings` queda para quien no tenga caché detrás.
+ */
+export const ajustesPublicos = cacheado(
+  "ajustes-sitio",
+  [CACHE_TAGS.artist],
+  () => getSiteSettings(),
+);
+
 /** El `where` de Prisma que comparten galería, portada, sala, ficha y sitemap. */
 export async function publicPaintingWhere(): Promise<PaintingVisibilityFilter> {
-  const { showSoldPaintings } = await getSiteSettings();
+  const { showSoldPaintings } = await ajustesPublicos();
   return visiblePaintingFilter(showSoldPaintings);
 }

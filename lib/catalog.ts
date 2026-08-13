@@ -24,6 +24,31 @@ export function visiblePaintingFilter(
   return showSold ? base : { ...base, status: { not: "SOLD" } };
 }
 
+/** Lo que hace falta saber de una obra para decidir si se puede enlazar. */
+export type ObraEnlazable = {
+  slug: string;
+  title: string;
+  published: boolean;
+  deletedAt: Date | null;
+};
+
+/**
+ * El enlace a la obra de la que habla una entrada del diario, o `null` si ya
+ * no se puede enseñar.
+ *
+ * Vive aquí y no en cada consulta porque el listado del diario y la entrada
+ * suelta llegaron a discrepar: uno miraba `published` y el otro además la
+ * papelera, así que una obra borrada seguía enlazada desde el listado.
+ */
+export function enlaceAObra(
+  painting: ObraEnlazable | null | undefined,
+): { slug: string; title: string } | null {
+  if (!painting || !painting.published || painting.deletedAt !== null) {
+    return null;
+  }
+  return { slug: painting.slug, title: painting.title };
+}
+
 /**
  * Formatea un precio guardado en céntimos. `null` = precio a consultar.
  * Sin decimales: los precios de obra son cifras redondas.

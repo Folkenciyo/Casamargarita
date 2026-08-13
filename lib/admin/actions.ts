@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth/guard";
+import { CACHE_TAGS, invalidar } from "@/lib/cache";
 import { uniqueSlug } from "@/lib/catalog";
 import { prisma } from "@/lib/db";
 import {
@@ -17,11 +18,21 @@ import { artistSchema, paintingSchema } from "@/lib/validation/painting";
 export type ActionState = { error?: string; ok?: boolean };
 
 function refreshPublicViews(slug?: string) {
+  // Las vistas públicas leen del caché de datos: sin caducar la etiqueta, el
+  // cambio no se vería aunque se refresque la página.
+  invalidar(CACHE_TAGS.paintings);
   revalidatePath("/");
   revalidatePath("/galeria");
   revalidatePath("/admin");
   revalidatePath("/admin/obras");
   if (slug) revalidatePath(`/obra/${slug}`);
+}
+
+/** La ficha, el retrato y los ajustes viven todos en la fila `singleton`. */
+function refreshArtist() {
+  invalidar(CACHE_TAGS.artist);
+  revalidatePath("/artista");
+  revalidatePath("/admin/artista");
 }
 
 function fieldsFrom(formData: FormData) {
@@ -406,8 +417,7 @@ export async function updateArtist(
     create: { id: "singleton", ...parsed.data },
   });
 
-  revalidatePath("/artista");
-  revalidatePath("/admin/artista");
+  refreshArtist();
   // El interruptor de vendidas cambia lo que ve todo el catálogo.
   refreshPublicViews();
   return { ok: true };
@@ -463,8 +473,7 @@ export async function uploadArtistPortrait(
     await deleteUploads(uploadsDir(), existing.portraitPath);
   }
 
-  revalidatePath("/artista");
-  revalidatePath("/admin/artista");
+  refreshArtist();
   return { ok: true };
 }
 
@@ -489,6 +498,5 @@ export async function deleteArtistPortrait(): Promise<void> {
   });
   await deleteUploads(uploadsDir(), artist.portraitPath);
 
-  revalidatePath("/artista");
-  revalidatePath("/admin/artista");
+  refreshArtist();
 }

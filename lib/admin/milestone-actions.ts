@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth/guard";
+import { CACHE_TAGS, invalidar } from "@/lib/cache";
 import { MILESTONE_KINDS } from "@/lib/milestones";
 import { z } from "zod";
 import type { ActionState } from "./actions";
@@ -24,6 +25,7 @@ const milestoneSchema = z.object({
 });
 
 function refrescar() {
+  invalidar(CACHE_TAGS.artist);
   revalidatePath("/artista");
   revalidatePath("/admin/trayectoria");
 }

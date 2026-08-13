@@ -1,23 +1,17 @@
 import Link from "next/link";
 import { LanguageSwitch } from "@/components/public/LanguageSwitch";
 import { OilTransitions } from "@/components/webgl/OilTransitions";
+import { cabeceraPublica } from "@/lib/public/queries";
 import { SITE_NAME } from "@/lib/site";
-import { prisma } from "@/lib/db";
 
 export default async function PublicLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const [artist, entradasPublicadas] = await Promise.all([
-    prisma.artist.findUnique({
-      where: { id: "singleton" },
-      select: { name: true, instagram: true, email: true },
-    }),
-    prisma.journalEntry.count({ where: { published: true } }),
-  ]);
-  const name = artist?.name || SITE_NAME;
-  const hayDiario = entradasPublicadas > 0;
+  const artist = await cabeceraPublica();
+  const name = artist.name || SITE_NAME;
+  const hayDiario = artist.hayDiario;
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -65,10 +59,10 @@ export default async function PublicLayout({
           <span>
             © {new Date().getFullYear()} {name}
           </span>
-          {artist?.email ? (
+          {artist.email ? (
             <a href={`mailto:${artist.email}`}>{artist.email}</a>
           ) : null}
-          {artist?.instagram ? (
+          {artist.instagram ? (
             <a
               href={`https://instagram.com/${artist.instagram.replace("@", "")}`}
               rel="noopener noreferrer"

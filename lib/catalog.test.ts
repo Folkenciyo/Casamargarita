@@ -1,12 +1,43 @@
 import { describe, expect, it } from "vitest";
 import {
   PRICE_ON_REQUEST,
+  enlaceAObra,
   formatDimensions,
   formatPrice,
   toSlug,
   uniqueSlug,
   visiblePaintingFilter,
 } from "./catalog";
+
+describe("enlaceAObra", () => {
+  const obra = {
+    slug: "marina-de-invierno",
+    title: "Marina de invierno",
+    published: true,
+    deletedAt: null,
+  };
+
+  it("devuelve slug y título de una obra publicada", () => {
+    expect(enlaceAObra(obra)).toEqual({
+      slug: "marina-de-invierno",
+      title: "Marina de invierno",
+    });
+  });
+
+  it("no enlaza una obra despublicada", () => {
+    expect(enlaceAObra({ ...obra, published: false })).toBeNull();
+  });
+
+  // El caso que separaba al listado del diario de la entrada suelta.
+  it("no enlaza una obra que está en la papelera", () => {
+    expect(enlaceAObra({ ...obra, deletedAt: new Date() })).toBeNull();
+  });
+
+  it("aguanta una entrada que no habla de ninguna obra", () => {
+    expect(enlaceAObra(null)).toBeNull();
+    expect(enlaceAObra(undefined)).toBeNull();
+  });
+});
 
 describe("formatPrice sin precio", () => {
   it("por defecto responde en español", () => {

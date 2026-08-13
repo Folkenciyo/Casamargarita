@@ -1,22 +1,17 @@
 import Link from "next/link";
 import { PaintingCard } from "@/components/public/PaintingCard";
 import { PaintingImage } from "@/components/public/PaintingImage";
-import { prisma } from "@/lib/db";
 import { diccionario, ruta, type Idioma } from "@/lib/i18n/dictionaries";
-import { publicPaintingWhere } from "@/lib/settings";
+import { fichaArtista, obraDestacada } from "@/lib/public/queries";
+import { ajustesPublicos } from "@/lib/settings";
 
 /** La portada, en el idioma que se le pida. */
 export async function HomeView({ lang = "es" }: { lang?: Idioma }) {
   const t = diccionario(lang);
-  const visible = await publicPaintingWhere();
+  const { showSoldPaintings } = await ajustesPublicos();
   const [artist, featured] = await Promise.all([
-    prisma.artist.findUnique({ where: { id: "singleton" } }),
-    prisma.painting.findMany({
-      where: { ...visible, featured: true },
-      orderBy: { position: "asc" },
-      take: 7,
-      include: { images: { where: { isPrimary: true }, take: 1 } },
-    }),
+    fichaArtista(),
+    obraDestacada(showSoldPaintings),
   ]);
 
   const [hero, ...rest] = featured;

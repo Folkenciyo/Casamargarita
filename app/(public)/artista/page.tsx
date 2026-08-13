@@ -1,39 +1,42 @@
 import type { Metadata } from "next";
 import { PaintingImage } from "@/components/public/PaintingImage";
-import { prisma } from "@/lib/db";
 import { scriptNonce } from "@/lib/http/nonce";
 import { agruparPorTipo } from "@/lib/milestones";
-import { publicPaintingWhere } from "@/lib/settings";
+import {
+  fichaArtista,
+  hitosPublicados,
+  obrasParaDatosEstructurados,
+} from "@/lib/public/queries";
+import { ajustesPublicos } from "@/lib/settings";
 import { SITE_URL } from "@/lib/site";
 
-// Render por petición: la imagen se construye sin acceso a la base de
-// datos (Postgres vive en otro contenedor), así que no se puede
-// prerenderizar en build.
+// Render por petición. Hoy es redundante —el `<html lang>` del layout raíz
+// sale de una cabecera, y eso ya hace dinámico todo el sitio—, pero se deja
+// como red: sin ella, el día que el idioma deje de leerse de la cabecera Next
+// intentaría prerenderizar en build, donde no hay Postgres. Lo que evita los
+// viajes a la base de datos es el caché por etiquetas (lib/cache.ts).
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const artist = await prisma.artist.findUnique({ where: { id: "singleton" } });
+  const artist = await fichaArtista();
   return {
     title: "La artista",
     description: artist?.statement || undefined,
   };
 }
 
+// Cuántas obras se enlazan desde los datos estructurados: las suficientes para
+// que un buscador entienda de quién es el catálogo, sin inflar el JSON-LD.
+const OBRAS_EN_JSON_LD = 25;
+
 export default async function ArtistPage() {
+  const { showSoldPaintings } = await ajustesPublicos();
   const [artist, hitos, obras, nonce] = await Promise.all([
-    prisma.artist.findUnique({ where: { id: "singleton" } }),
-    prisma.milestone.findMany({
-      where: { published: true },
-      orderBy: [{ year: "desc" }, { position: "desc" }],
-    }),
+    fichaArtista(),
+    hitosPublicados(),
     // Las obras visibles, para enlazarlas desde los datos estructurados: así
     // el buscador sabe que estos cuadros son de esta persona.
-    prisma.painting.findMany({
-      where: await publicPaintingWhere(),
-      orderBy: { position: "asc" },
-      take: 25,
-      select: { slug: true, title: true },
-    }),
+    obrasParaDatosEstructurados(showSoldPaintings, OBRAS_EN_JSON_LD),
     scriptNonce(),
   ]);
 

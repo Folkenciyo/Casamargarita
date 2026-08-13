@@ -3,12 +3,16 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth/guard";
+import { CACHE_TAGS, invalidar } from "@/lib/cache";
 import { uniqueSlug } from "@/lib/catalog";
 import { prisma } from "@/lib/db";
 import { seriesSchema } from "@/lib/validation/painting";
 import type { ActionState } from "./actions";
 
 function refrescar(slug?: string) {
+  // También el catálogo: la ficha de cada obra lleva el título de su serie y
+  // los filtros de la galería se construyen con ellas.
+  invalidar(CACHE_TAGS.series, CACHE_TAGS.paintings);
   revalidatePath("/");
   revalidatePath("/galeria");
   revalidatePath("/admin/series");

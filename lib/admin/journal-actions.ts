@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth/guard";
+import { CACHE_TAGS, invalidar } from "@/lib/cache";
 import { uniqueSlug } from "@/lib/catalog";
 import { prisma } from "@/lib/db";
 import {
@@ -15,6 +16,9 @@ import { journalSchema } from "@/lib/validation/painting";
 import type { ActionState } from "./actions";
 
 function refrescar(slug?: string) {
+  // La cabecera del sitio enseña el enlace al diario solo si hay algo
+  // publicado, así que la primera entrada cambia todas las páginas.
+  invalidar(CACHE_TAGS.journal);
   revalidatePath("/diario");
   revalidatePath("/admin/diario");
   if (slug) revalidatePath(`/diario/${slug}`);

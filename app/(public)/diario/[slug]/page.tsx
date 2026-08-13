@@ -3,24 +3,16 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 import { PaintingImage } from "@/components/public/PaintingImage";
-import { prisma } from "@/lib/db";
 import { scriptNonce } from "@/lib/http/nonce";
 import { imageUrl } from "@/lib/images/urls";
+import { entradaDiario } from "@/lib/public/queries";
 import { SITE_NAME } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
 
-const getEntrada = cache(async (slug: string) => {
-  return prisma.journalEntry.findFirst({
-    where: { slug, published: true },
-    include: {
-      images: { orderBy: { position: "asc" } },
-      painting: {
-        select: { slug: true, title: true, published: true, deletedAt: true },
-      },
-    },
-  });
-});
+// `cache` de React: generateMetadata y la página piden la misma entrada en la
+// misma petición.
+const getEntrada = cache(async (slug: string) => entradaDiario(slug));
 
 const formatoFecha = new Intl.DateTimeFormat("es-ES", {
   day: "numeric",
@@ -44,7 +36,7 @@ export async function generateMetadata({
       type: "article",
       title: entrada.title,
       description: entrada.summary || undefined,
-      publishedTime: entrada.publishedAt.toISOString(),
+      publishedTime: entrada.publishedAt,
       images: portada
         ? [imageUrl(portada.basePath, portada.widths.at(-2) ?? 800, "webp")]
         : [],
@@ -63,18 +55,15 @@ export default async function JournalEntryPage({
   ]);
   if (!entrada) notFound();
 
-  const obraVisible =
-    entrada.painting?.published && !entrada.painting.deletedAt
-      ? entrada.painting
-      : null;
+  const obraVisible = entrada.painting;
 
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "Article",
     headline: entrada.title,
     description: entrada.summary || undefined,
-    datePublished: entrada.publishedAt.toISOString(),
-    dateModified: entrada.updatedAt.toISOString(),
+    datePublished: entrada.publishedAt,
+    dateModified: entrada.updatedAt,
     author: { "@type": "Person", name: SITE_NAME },
   };
 
@@ -89,7 +78,7 @@ export default async function JournalEntryPage({
       <article className="mx-auto max-w-2xl">
         <header className="mb-10">
           <p className="tabular text-xs tracking-[0.2em] text-[color:var(--color-ink-soft)] uppercase">
-            {formatoFecha.format(entrada.publishedAt)}
+            {formatoFecha.format(new Date(entrada.publishedAt))}
           </p>
           <h1 className="display mt-3 text-[length:var(--text-title)] text-balance">
             {entrada.title}

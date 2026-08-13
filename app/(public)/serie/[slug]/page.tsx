@@ -3,24 +3,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 import { PaintingCard } from "@/components/public/PaintingCard";
-import { prisma } from "@/lib/db";
-import { publicPaintingWhere } from "@/lib/settings";
+import { seriePublica } from "@/lib/public/queries";
+import { ajustesPublicos } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
 const getSerie = cache(async (slug: string) => {
-  const serie = await prisma.series.findFirst({
-    where: { slug, published: true },
-  });
-  if (!serie) return null;
-
-  const paintings = await prisma.painting.findMany({
-    where: { ...(await publicPaintingWhere()), seriesId: serie.id },
-    orderBy: { position: "asc" },
-    include: { images: { where: { isPrimary: true }, take: 1 } },
-  });
-
-  return { serie, paintings };
+  const { showSoldPaintings } = await ajustesPublicos();
+  return seriePublica(slug, showSoldPaintings);
 });
 
 export async function generateMetadata({

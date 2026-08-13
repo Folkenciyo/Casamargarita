@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
-import { prisma } from "@/lib/db";
-import { publicPaintingWhere } from "@/lib/settings";
+import { rutasSitemap } from "@/lib/public/queries";
+import { ajustesPublicos } from "@/lib/settings";
 import { SITE_URL } from "@/lib/site";
 
 export const dynamic = "force-dynamic";
@@ -8,21 +8,8 @@ export const dynamic = "force-dynamic";
 const base = SITE_URL;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const [paintings, series, entradas] = await Promise.all([
-    prisma.painting.findMany({
-      // Una obra que no sale en la galería tampoco se anuncia a los buscadores.
-      where: await publicPaintingWhere(),
-      select: { slug: true, updatedAt: true },
-    }),
-    prisma.series.findMany({
-      where: { published: true },
-      select: { slug: true, updatedAt: true },
-    }),
-    prisma.journalEntry.findMany({
-      where: { published: true },
-      select: { slug: true, updatedAt: true },
-    }),
-  ]);
+  const { showSoldPaintings } = await ajustesPublicos();
+  const { paintings, series, entradas } = await rutasSitemap(showSoldPaintings);
 
   /** Enlaza cada dirección con su equivalente en el otro idioma. */
   const conAlternativas = (camino: string) => ({

@@ -7,27 +7,18 @@ import { PaintingZoom } from "@/components/public/PaintingZoom";
 import { ScaleView } from "@/components/public/ScaleView";
 import { ShippingEstimate } from "@/components/public/ShippingEstimate";
 import { formatDimensions, formatPrice } from "@/lib/catalog";
-import { prisma } from "@/lib/db";
 import { diccionario, type Idioma } from "@/lib/i18n/dictionaries";
 import { imageUrl } from "@/lib/images/urls";
 import { scriptNonce } from "@/lib/http/nonce";
-import { publicPaintingWhere } from "@/lib/settings";
+import { obraPublica } from "@/lib/public/queries";
+import { ajustesPublicos } from "@/lib/settings";
 import { contarVisita } from "@/lib/stats";
 
 // `cache` de React: generateMetadata y el propio componente piden la misma
-// obra en la misma petición, y sin esto serían dos viajes a Postgres.
+// obra en la misma petición, y sin esto serían dos vueltas al caché de datos.
 export const getPainting = cache(async (slug: string) => {
-  return prisma.painting.findFirst({
-    // Con las vendidas ocultas, su ficha tampoco existe: quien llegue por un
-    // enlace viejo ve un 404, no una obra que ya no está en el catálogo.
-    where: { slug, ...(await publicPaintingWhere()) },
-    include: {
-      images: { orderBy: [{ isPrimary: "desc" }, { position: "asc" }] },
-      // Solo se enseña la serie si ella misma está publicada: una serie
-      // oculta no debe asomar por la ficha de sus obras.
-      series: { select: { slug: true, title: true, published: true } },
-    },
-  });
+  const { showSoldPaintings } = await ajustesPublicos();
+  return obraPublica(slug, showSoldPaintings);
 });
 
 export type PaintingParams = Promise<{ slug: string }>;
