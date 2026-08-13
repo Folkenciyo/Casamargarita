@@ -1,4 +1,4 @@
-import { imageUrl, srcSet } from "@/lib/images/urls";
+import { imageUrl, responsiveWidths, srcSet } from "@/lib/images/urls";
 
 type Props = {
   basePath: string;
@@ -29,18 +29,23 @@ export function PaintingImage({
   priority = false,
   className = "",
 }: Props) {
-  const fallbackWidth = widths.at(-1) ?? widths[0] ?? 400;
+  // El ancho de zoom queda fuera del srcset: pesa demasiado para que un
+  // navegador lo elija solo por tener la pantalla grande. Se pide aparte,
+  // desde el visor de detalle, y únicamente si alguien lo abre.
+  const navegables = responsiveWidths(widths);
+  const anchos = navegables.length > 0 ? navegables : widths;
+  const fallbackWidth = anchos.at(-1) ?? 400;
 
   return (
     <picture>
       <source
         type="image/avif"
-        srcSet={srcSet(basePath, widths, "avif")}
+        srcSet={srcSet(basePath, anchos, "avif")}
         sizes={sizes}
       />
       <source
         type="image/webp"
-        srcSet={srcSet(basePath, widths, "webp")}
+        srcSet={srcSet(basePath, anchos, "webp")}
         sizes={sizes}
       />
       <img

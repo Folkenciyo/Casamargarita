@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { log } from "@/lib/log";
 
 // Readiness: comprueba que la base de datos responde. Separado de /api/health
 // a propósito — el HEALTHCHECK del contenedor no debe reiniciar la app porque
@@ -10,7 +11,7 @@ export async function GET() {
     await prisma.$queryRaw`SELECT 1`;
     return Response.json({ status: "ready", db: "up" });
   } catch (error) {
-    console.error("readiness: fallo de conexión a la base de datos", error);
+    log.error("readiness: fallo de conexión a la base de datos", error);
     return Response.json({ status: "degraded", db: "down" }, { status: 503 });
   }
 }

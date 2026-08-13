@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { LanguageSwitch } from "@/components/public/LanguageSwitch";
 import { OilTransitions } from "@/components/webgl/OilTransitions";
+import { SITE_NAME } from "@/lib/site";
 import { prisma } from "@/lib/db";
 
 export default async function PublicLayout({
@@ -7,11 +9,15 @@ export default async function PublicLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const artist = await prisma.artist.findUnique({
-    where: { id: "singleton" },
-    select: { name: true, instagram: true, email: true },
-  });
-  const name = artist?.name ?? "Galería de óleos";
+  const [artist, entradasPublicadas] = await Promise.all([
+    prisma.artist.findUnique({
+      where: { id: "singleton" },
+      select: { name: true, instagram: true, email: true },
+    }),
+    prisma.journalEntry.count({ where: { published: true } }),
+  ]);
+  const name = artist?.name || SITE_NAME;
+  const hayDiario = entradasPublicadas > 0;
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -25,9 +31,27 @@ export default async function PublicLayout({
             <Link href="/galeria" className="hover:text-[color:var(--color-oil)]">
               Galería
             </Link>
+            {/* El diario solo se anuncia cuando hay algo que leer: un enlace a
+                una página vacía resta más de lo que suma. */}
+            {hayDiario ? (
+              <Link href="/diario" className="hover:text-[color:var(--color-oil)]">
+                Diario
+              </Link>
+            ) : null}
+            <Link href="/encargos" className="hover:text-[color:var(--color-oil)]">
+              Encargos
+            </Link>
             <Link href="/artista" className="hover:text-[color:var(--color-oil)]">
               La artista
             </Link>
+            <Link
+              href="/buscar"
+              aria-label="Buscar"
+              className="hover:text-[color:var(--color-oil)]"
+            >
+              Buscar
+            </Link>
+            <LanguageSwitch />
           </div>
         </nav>
       </header>

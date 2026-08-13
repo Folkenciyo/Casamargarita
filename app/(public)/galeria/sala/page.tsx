@@ -4,6 +4,7 @@ import { RoomGate } from "@/components/webgl/RoomGate";
 import { formatPrice } from "@/lib/catalog";
 import { prisma } from "@/lib/db";
 import { imageUrl } from "@/lib/images/urls";
+import { publicPaintingWhere } from "@/lib/settings";
 import { STATUS_LABELS } from "@/lib/validation/painting";
 
 // Render por petición: la imagen se construye sin acceso a la base de
@@ -20,7 +21,7 @@ export const metadata: Metadata = {
 
 export default async function RoomPage() {
   const paintings = await prisma.painting.findMany({
-    where: { published: true },
+    where: await publicPaintingWhere(),
     orderBy: { position: "asc" },
     include: { images: { where: { isPrimary: true }, take: 1 } },
   });

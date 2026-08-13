@@ -9,7 +9,8 @@ import sharp from "sharp";
  * scripts de node pueden usar el pipeline sin bundler. Un test comprueba que
  * las dos listas no se separen.
  */
-const IMAGE_WIDTHS = [400, 800, 1600] as const;
+export const PIPELINE_WIDTHS = [400, 800, 1600, 3200] as const;
+const IMAGE_WIDTHS = PIPELINE_WIDTHS;
 
 export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 export const MAX_DIMENSION = 12000;
@@ -154,6 +155,24 @@ export async function storePaintingImage({
   return storeImage({
     buffer,
     basePath: join("paintings", paintingId, imageId),
+    uploadsDir: dir,
+  });
+}
+
+export async function storeJournalImage({
+  buffer,
+  entryId,
+  imageId,
+  uploadsDir: dir,
+}: {
+  buffer: Buffer;
+  entryId: string;
+  imageId: string;
+  uploadsDir: string;
+}): Promise<StoredImage> {
+  return storeImage({
+    buffer,
+    basePath: join("journal", entryId, imageId),
     uploadsDir: dir,
   });
 }

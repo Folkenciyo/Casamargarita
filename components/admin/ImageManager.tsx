@@ -1,16 +1,15 @@
 "use client";
 
-import { useActionState } from "react";
-import { useFormStatus } from "react-dom";
+import { useEffect, useRef, useState } from "react";
 import {
   deleteImage,
   moveImage,
+  reorderImages,
   setPrimaryImage,
   updateImageAlt,
-  uploadPaintingImage,
-  type ActionState,
 } from "@/lib/admin/actions";
 import { imageUrl } from "@/lib/images/urls";
+import { MultiUpload } from "./MultiUpload";
 
 type ImageItem = {
   id: string;
@@ -20,19 +19,6 @@ type ImageItem = {
   alt: string | null;
 };
 
-function UploadButton() {
-  const { pending } = useFormStatus();
-  return (
-    <button
-      type="submit"
-      disabled={pending}
-      className="rounded bg-[color:var(--color-ink)] px-4 py-2 text-[color:var(--color-canvas)] disabled:opacity-50"
-    >
-      {pending ? "Procesando…" : "Subir foto"}
-    </button>
-  );
-}
-
 export function ImageManager({
   paintingId,
   images,
@@ -40,10 +26,31 @@ export function ImageManager({
   paintingId: string;
   images: ImageItem[];
 }) {
-  const [state, formAction] = useActionState<ActionState, FormData>(
-    uploadPaintingImage.bind(null, paintingId),
-    {},
-  );
+  // Copia local para que el arrastre se vea al instante, sin esperar al
+  // servidor. Se resincroniza cuando llega el orden ya guardado.
+  const [orden, setOrden] = useState(images);
+  const arrastrado = useRef<number | null>(null);
+
+  useEffect(() => {
+    setOrden(images);
+  }, [images]);
+
+  function soltarSobre(destino: number) {
+    const origen = arrastrado.current;
+    arrastrado.current = null;
+    if (origen === null || origen === destino) return;
+
+    const siguiente = [...orden];
+    const [movida] = siguiente.splice(origen, 1);
+    if (!movida) return;
+    siguiente.splice(destino, 0, movida);
+
+    setOrden(siguiente);
+    void reorderImages(
+      paintingId,
+      siguiente.map((imagen) => imagen.id),
+    );
+  }
 
   return (
     <section>
@@ -51,34 +58,35 @@ export function ImageManager({
         Fotos ({images.length})
       </h2>
 
-      <form action={formAction} className="mb-6 grid gap-3 sm:max-w-md">
-        {state.error ? (
-          <p role="alert" className="rounded bg-red-50 p-3 text-red-800">
-            {state.error}
-          </p>
-        ) : null}
+      <MultiUpload paintingId={paintingId} />
 
-        <input
-          type="file"
-          name="file"
-          accept="image/jpeg,image/png,image/webp,image/avif,image/tiff"
-          required
-          aria-label="Fichero de imagen"
-        />
-        <input
-          type="text"
-          name="alt"
-          placeholder="Descripción para lectores de pantalla (opcional)"
-          className="rounded border border-[color:var(--color-canvas-dim)] bg-white px-3 py-2"
-        />
-        <div>
-          <UploadButton />
-        </div>
-      </form>
+      {orden.length > 1 ? (
+        <p className="mb-3 text-sm text-[color:var(--color-ink-soft)]">
+          Arrastra las fotos para cambiar su orden. Las flechas hacen lo mismo
+          desde el teclado.
+        </p>
+      ) : null}
 
-      <ul className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {images.map((image, index) => (
-          <li key={image.id} className="grid min-w-0 gap-2">
+      {/* Con nombre: en esta pantalla hay otra lista, la del progreso de la
+          subida, y sin distinguirlas se confunden lector de pantalla y tests. */}
+      <ul
+        aria-label="Fotos de la obra"
+        className="grid grid-cols-2 gap-4 sm:grid-cols-4"
+      >
+        {orden.map((image, index) => (
+          <li
+            key={image.id}
+            draggable
+            onDragStart={() => {
+              arrastrado.current = index;
+            }}
+            onDragOver={(evento) => evento.preventDefault()}
+            onDrop={() => soltarSobre(index)}
+            onDragEnd={() => {
+              arrastrado.current = null;
+            }}
+            className="grid min-w-0 cursor-grab gap-2 active:cursor-grabbing"
+          >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={imageUrl(image.basePath, image.widths[0] ?? 400, "webp")}

@@ -18,7 +18,7 @@ setup("guarda la sesión de administración", async ({ page }) => {
   await page.getByRole("button", { name: "Entrar" }).click();
 
   await expect(page).toHaveURL(/\/admin$/, { timeout: 120_000 });
-  await expect(page.getByRole("heading", { name: /^Obras \(/ })).toBeVisible({
+  await expect(page.getByRole("heading", { name: "Resumen" })).toBeVisible({
     timeout: 120_000,
   });
 

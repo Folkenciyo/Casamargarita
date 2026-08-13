@@ -24,9 +24,9 @@ test("una consulta enviada desde la web aparece en el panel y se marca leída", 
   await page.goto("/admin/consultas");
 
   // Contador relativo: otros tests pueden haber dejado consultas antes.
-  const heading = page.getByRole("heading", { level: 1 });
-  await expect(heading).toContainText(/Consultas \(\d+ sin leer\)/);
-  const unread = Number(/\((\d+) sin leer\)/.exec(await heading.innerText())![1]);
+  const resumen = page.getByText(/sin leer · .* sin contestar/);
+  await expect(resumen).toBeVisible();
+  const unread = Number(/(\d+) sin leer/.exec(await resumen.innerText())![1]);
   expect(unread).toBeGreaterThan(0);
 
   // El aviso de la nav es visible desde cualquier vista, no solo aquí.
@@ -44,7 +44,7 @@ test("una consulta enviada desde la web aparece en el panel y se marca leída", 
 
   await entry.getByRole("button", { name: "Marcar como leída" }).click();
 
-  await expect(heading).toContainText(`Consultas (${unread - 1} sin leer)`);
+  await expect(resumen).toContainText(`${unread - 1} sin leer`);
   await expect(
     entry.getByRole("button", { name: "Marcar como leída" }),
   ).toHaveCount(0);
@@ -54,4 +54,29 @@ test("una consulta enviada desde la web aparece en el panel y se marca leída", 
   } else {
     await expect(navBadge).toHaveCount(0);
   }
+
+  await test.step("marcarla como contestada y anotar algo", async () => {
+    await entry.getByRole("button", { name: "Marcar como contestada" }).click();
+    await expect(entry).toContainText("contestada");
+
+    await entry.getByRole("button", { name: "Añadir una nota" }).click();
+    await entry.getByLabel("Nota privada").fill("Quedamos el jueves en el taller.");
+    await entry.getByRole("button", { name: "Guardar nota" }).click();
+    // Se espera al acuse antes de recargar: recargar a media acción la
+    // cancelaría y la nota no llegaría a guardarse.
+    await expect(entry.getByText("Nota guardada")).toBeVisible();
+
+    // La nota sobrevive a recargar: está guardada, no solo en pantalla.
+    await page.reload();
+    const guardada = page.locator("li").filter({ hasText: SENDER });
+    await expect(guardada.getByLabel("Nota privada")).toHaveValue(
+      "Quedamos el jueves en el taller.",
+    );
+  });
+
+  await test.step("la nota privada no sale nunca a la web", async () => {
+    await page.goto(`/obra/${painting.slug}`);
+    await expect(page.getByText("Quedamos el jueves")).toHaveCount(0);
+    await expect(page.getByText(SENDER)).toHaveCount(0);
+  });
 });

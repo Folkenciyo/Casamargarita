@@ -20,6 +20,7 @@ export default async function AdminArtistPage() {
           bio: artist?.bio ?? "",
           email: artist?.email ?? "",
           instagram: artist?.instagram ?? "",
+          showSoldPaintings: artist?.showSoldPaintings ?? true,
         }}
       />
 

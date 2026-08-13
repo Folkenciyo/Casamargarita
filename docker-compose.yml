@@ -13,7 +13,7 @@ services:
         format: raw
         required: false
     environment:
-      DATABASE_URL: postgresql://art:art@postgres:5432/art_cris?schema=public
+      DATABASE_URL: postgresql://art:art@postgres:5432/casamargarita?schema=public
       UPLOADS_DIR: /app/uploads
       WATCHPACK_POLLING: "true"
     volumes:
@@ -32,13 +32,13 @@ services:
     environment:
       POSTGRES_USER: art
       POSTGRES_PASSWORD: art
-      POSTGRES_DB: art_cris
+      POSTGRES_DB: casamargarita
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
       - "5432:5432" # solo en desarrollo, para inspeccionar con un cliente
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U art -d art_cris"]
+      test: ["CMD-SHELL", "pg_isready -U art -d casamargarita"]
       interval: 5s
       timeout: 5s
       retries: 10

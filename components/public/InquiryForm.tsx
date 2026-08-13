@@ -2,12 +2,13 @@
 
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
+import { diccionario, type Idioma } from "@/lib/i18n/dictionaries";
 import { sendInquiry, type InquiryState } from "@/lib/public/actions";
 
 const field =
   "w-full rounded border border-[color:var(--color-canvas-dim)] bg-white px-3 py-2";
 
-function Submit() {
+function Submit({ enviar, enviando }: { enviar: string; enviando: string }) {
   const { pending } = useFormStatus();
   return (
     <button
@@ -15,12 +16,19 @@ function Submit() {
       disabled={pending}
       className="rounded bg-[color:var(--color-ink)] px-4 py-2 text-[color:var(--color-canvas)] disabled:opacity-50"
     >
-      {pending ? "Enviando…" : "Enviar consulta"}
+      {pending ? enviando : enviar}
     </button>
   );
 }
 
-export function InquiryForm({ paintingId }: { paintingId: string }) {
+export function InquiryForm({
+  paintingId,
+  lang = "es",
+}: {
+  paintingId: string;
+  lang?: Idioma;
+}) {
+  const t = diccionario(lang);
   const [state, formAction] = useActionState<InquiryState, FormData>(
     sendInquiry.bind(null, paintingId),
     {},
@@ -29,7 +37,9 @@ export function InquiryForm({ paintingId }: { paintingId: string }) {
   if (state.ok) {
     return (
       <p role="status" className="rounded bg-green-50 p-4 text-green-900">
-        Consulta enviada. La artista te responderá al correo que has indicado.
+        {lang === "en"
+          ? "Enquiry sent. The artist will reply to the address you gave."
+          : "Consulta enviada. La artista te responderá al correo que has indicado."}
       </p>
     );
   }
@@ -44,21 +54,21 @@ export function InquiryForm({ paintingId }: { paintingId: string }) {
 
       <div>
         <label className="block text-sm" htmlFor="name">
-          Nombre
+          {t.formulario.nombre}
         </label>
         <input id="name" name="name" required className={field} />
       </div>
 
       <div>
         <label className="block text-sm" htmlFor="email">
-          Correo
+          {t.formulario.correo}
         </label>
         <input id="email" name="email" type="email" required className={field} />
       </div>
 
       <div>
         <label className="block text-sm" htmlFor="message">
-          Mensaje
+          {t.formulario.mensaje}
         </label>
         <textarea
           id="message"
@@ -81,7 +91,10 @@ export function InquiryForm({ paintingId }: { paintingId: string }) {
       />
 
       <div>
-        <Submit />
+        <Submit
+          enviar={t.formulario.enviar}
+          enviando={t.formulario.enviando}
+        />
       </div>
     </form>
   );

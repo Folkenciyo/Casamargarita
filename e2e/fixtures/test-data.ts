@@ -12,7 +12,7 @@ export const E2E_BASE_URL = `http://127.0.0.1:${E2E_PORT}`;
 
 export const E2E_DATABASE_URL =
   process.env.DATABASE_URL ??
-  "postgresql://art:art@postgres-test:5432/art_cris_test?schema=public";
+  "postgresql://art:art@postgres-test:5432/casamargarita_test?schema=public";
 
 export const E2E_UPLOADS_DIR = process.env.UPLOADS_DIR ?? "/tmp/uploads";
 
@@ -33,11 +33,11 @@ export const TEST_ADMIN = {
 } as const;
 
 export const SEEDED_ARTIST = {
-  name: "Cristina Prueba",
+  name: "Casa Margarita",
   statement: "Óleo sobre lienzo. Prueba de extremo a extremo.",
   bio: "Biografía de referencia para los tests.",
-  email: "cristina@example.com",
-  instagram: "@cristina.prueba",
+  email: "hola@casamargarita.example",
+  instagram: "@casamargarita",
 } as const;
 
 export type SeededPainting = {
@@ -129,11 +129,16 @@ export const TEST_IPS = {
   publicPages: "203.0.113.10",
   publicInquiry: "203.0.113.11",
   publicRoom: "203.0.113.12",
+  publicSecurity: "203.0.113.13",
+  publicI18n: "203.0.113.14",
   adminLoginUi: "203.0.113.20",
   adminLoginApiOrigin: "203.0.113.30",
   adminLoginApiWrong: "203.0.113.31",
   adminLoginApiLimit: "203.0.113.32",
+  adminDashboard: "203.0.113.39",
   adminPaintings: "203.0.113.40",
   adminArtist: "203.0.113.41",
   adminInquiries: "203.0.113.42",
+  adminSeries: "203.0.113.43",
+  adminTrash: "203.0.113.44",
 } as const;
