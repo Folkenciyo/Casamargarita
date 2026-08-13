@@ -10,11 +10,16 @@ export type OilUniforms = {
   /** 0 = intro (radial), 1 = brochazo (barrido) */
   mode: 0 | 1;
   angle: number;
-  /** 1 = descubre, 0 = cubre */
+  /** 0 = mancha la pantalla, 1 = la despeja */
   reveal: 0 | 1;
+  /** Segundos desde que arrancó la capa; mueve la veta del óleo. */
+  time: number;
 };
 
+// El óleo de la casa y su sombra. Dos tonos y no uno: un color plano a
+// pantalla completa se ve digital por muy buen borde que tenga.
 const PAINT: [number, number, number] = [0x8c / 255, 0x3f / 255, 0x24 / 255];
+const PAINT_DEEP: [number, number, number] = [0x5a / 255, 0x25 / 255, 0x16 / 255];
 
 function compile(
   gl: WebGLRenderingContext,
@@ -83,10 +88,13 @@ export function createOilRenderer(canvas: HTMLCanvasElement): OilRenderer | null
     angle: gl.getUniformLocation(program, "uAngle"),
     aspect: gl.getUniformLocation(program, "uAspect"),
     paint: gl.getUniformLocation(program, "uPaint"),
+    paintDeep: gl.getUniformLocation(program, "uPaintDeep"),
     reveal: gl.getUniformLocation(program, "uReveal"),
+    time: gl.getUniformLocation(program, "uTime"),
   };
 
   gl.uniform3fv(uniforms.paint, PAINT);
+  gl.uniform3fv(uniforms.paintDeep, PAINT_DEEP);
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
 
@@ -113,6 +121,7 @@ export function createOilRenderer(canvas: HTMLCanvasElement): OilRenderer | null
       gl.uniform1f(uniforms.mode, values.mode);
       gl.uniform1f(uniforms.angle, values.angle);
       gl.uniform1f(uniforms.reveal, values.reveal);
+      gl.uniform1f(uniforms.time, values.time);
       gl.uniform1f(
         uniforms.aspect,
         canvas.width / Math.max(canvas.height, 1),
