@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { PrismaClient } from "../../lib/generated/prisma/client.js";
+import { revalidarCache } from "../fixtures/revalidar";
 import { TEST_IPS } from "../fixtures/test-data";
 
 test.use({ extraHTTPHeaders: { "x-forwarded-for": TEST_IPS.publicPages } });
@@ -11,6 +12,7 @@ test.use({ extraHTTPHeaders: { "x-forwarded-for": TEST_IPS.publicPages } });
  */
 test("la galería pagina cuando hay más de 24 obras publicadas", async ({
   page,
+  request,
 }) => {
   test.setTimeout(60_000);
 
@@ -41,6 +43,10 @@ test("la galería pagina cuando hay más de 24 obras publicadas", async ({
         position: startPosition + i,
       })),
     });
+
+    // El relleno ha entrado por Prisma, sin pasar por el panel: nadie ha
+    // invalidado nada y la galería seguiría sirviendo el catálogo de antes.
+    await revalidarCache(request);
 
     await page.goto("/galeria");
     await expect(page.getByText(/Página 1 de \d+/)).toBeVisible();
