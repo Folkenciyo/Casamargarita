@@ -192,6 +192,27 @@ Dominio y certificado Let's Encrypt se configuran en la UI de Dokploy —
 sin labels de Traefik escritas a mano. El volumen `uploads` debe declararse
 persistente.
 
+El acceso al panel va en `.env.dokploy` (fuera de git; ver
+`.env.dokploy.example`). Es un servidor compartido: ahí viven otros cinco
+stacks, y por eso **todos los servicios del compose llevan el prefijo
+`casamargarita-`**. Dokploy los engancha a todos a la misma red, así que un
+servicio llamado `postgres` a secas resolvería al del primer proyecto que
+registrase ese alias. No quites el prefijo.
+
+Para arrancar por primera vez, en este orden:
+
+1. **DNS antes que nada.** `casamargarita.art` y `www` con un registro `A` a la
+   IP del servidor. Let's Encrypt valida por HTTP, así que sin DNS propagado el
+   certificado falla y el dominio queda a medias en Traefik.
+2. Crear el proyecto y la aplicación Compose apuntando a la rama que se
+   despliega.
+3. Cargar las variables de la lista de abajo. `POSTGRES_PASSWORD` y
+   `SESSION_SECRET` se generan nuevos: no reutilizar los de desarrollo.
+4. Declarar `uploads` y `backups` como volúmenes persistentes. Si se olvida,
+   el primer redespliegue se lleva por delante todas las fotos.
+5. Desplegar y mirar el registro del servicio `casamargarita-migrator`: aplica
+   las migraciones y debe terminar en éxito antes de que arranque la web.
+
 Variables en la UI de Dokploy: `POSTGRES_PASSWORD` (sin `$`), `SESSION_SECRET`,
 `ADMIN_EMAIL`, `ADMIN_PASSWORD_HASH`, `PUBLIC_URL` y `PUBLIC_SITE_NAME`
 (el nombre que sale en la pestaña del navegador y al compartir un enlace; el
@@ -232,14 +253,14 @@ ha restaurado no es una copia, es un fichero.
 
 ```bash
 # Forzar una copia ahora
-docker compose -f docker-compose.prod.yml run --rm backup /app/scripts/backup.sh
+docker compose -f docker-compose.prod.yml run --rm casamargarita-backup /app/scripts/backup.sh
 
 # Comprobar que la última copia sirve
-docker compose -f docker-compose.prod.yml run --rm backup /app/scripts/verify-backup.sh
+docker compose -f docker-compose.prod.yml run --rm casamargarita-backup /app/scripts/verify-backup.sh
 
 # Restaurar de verdad (destruye lo que haya)
 gunzip -c backups/db-AAAAMMDD-HHMMSS.sql.gz \
-  | docker compose -f docker-compose.prod.yml exec -T postgres psql -U art casamargarita
+  | docker compose -f docker-compose.prod.yml exec -T casamargarita-postgres psql -U art casamargarita
 ```
 
 Ajustables por entorno: `BACKUP_INTERVAL_SECONDS` (86400),

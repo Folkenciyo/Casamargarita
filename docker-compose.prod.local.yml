@@ -4,6 +4,6 @@
 #   docker compose -f docker-compose.prod.yml -f docker-compose.prod.local.yml \
 #     -p casamargarita_prod up --build
 services:
-  web:
+  casamargarita-web:
     ports:
       - "3001:3000"

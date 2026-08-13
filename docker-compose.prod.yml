@@ -1,19 +1,25 @@
 # Producción — este es el fichero que consume Dokploy.
 # El dominio y el certificado TLS se configuran desde la UI de Dokploy:
 # NO añadir labels de Traefik a mano.
+#
+# Todos los servicios llevan el prefijo `casamargarita-` y no es cosmética:
+# Dokploy engancha todos los stacks del servidor a la misma red, así que un
+# nombre genérico como `postgres` resuelve al contenedor del primer proyecto
+# que registrase ese alias — y ahí hay cinco stacks más. Con un nombre suelto,
+# esta web podría acabar hablando con la base de datos de otra aplicación.
 services:
-  migrator:
+  casamargarita-migrator:
     build:
       context: .
       target: migrator
     environment:
-      DATABASE_URL: postgresql://art:${POSTGRES_PASSWORD}@postgres:5432/casamargarita?schema=public
+      DATABASE_URL: postgresql://art:${POSTGRES_PASSWORD}@casamargarita-postgres:5432/casamargarita?schema=public
     depends_on:
-      postgres:
+      casamargarita-postgres:
         condition: service_healthy
     restart: "no"
 
-  web:
+  casamargarita-web:
     build:
       context: .
       target: runner
@@ -30,22 +36,22 @@ services:
         required: false
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://art:${POSTGRES_PASSWORD}@postgres:5432/casamargarita?schema=public
+      DATABASE_URL: postgresql://art:${POSTGRES_PASSWORD}@casamargarita-postgres:5432/casamargarita?schema=public
       UPLOADS_DIR: /app/uploads
     volumes:
       - uploads:/app/uploads
     expose:
       - "3000"
     depends_on:
-      postgres:
+      casamargarita-postgres:
         condition: service_healthy
-      migrator:
+      casamargarita-migrator:
         condition: service_completed_successfully
     restart: unless-stopped
 
   # Vacía la papelera una vez al día. Usa la imagen de la app porque necesita
   # Prisma y el pipeline de imágenes para borrar también las fotos del disco.
-  purge:
+  casamargarita-purge:
     build:
       context: .
       target: dev
@@ -59,25 +65,25 @@ services:
         format: raw
         required: false
     environment:
-      DATABASE_URL: postgresql://art:${POSTGRES_PASSWORD}@postgres:5432/casamargarita?schema=public
+      DATABASE_URL: postgresql://art:${POSTGRES_PASSWORD}@casamargarita-postgres:5432/casamargarita?schema=public
       UPLOADS_DIR: /app/uploads
     volumes:
       - uploads:/app/uploads
     depends_on:
-      postgres:
+      casamargarita-postgres:
         condition: service_healthy
-      migrator:
+      casamargarita-migrator:
         condition: service_completed_successfully
     restart: unless-stopped
 
   # Copia diaria y, una vez por semana, restauración de prueba. Usa la imagen
   # de Postgres porque solo necesita pg_dump, psql y tar: nada de Node.
-  backup:
+  casamargarita-backup:
     image: postgres:16-alpine
     command: /app/scripts/backup-cron.sh
     environment:
       PGPASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_HOST: postgres
+      POSTGRES_HOST: casamargarita-postgres
       POSTGRES_USER: art
       POSTGRES_DB: casamargarita
       UPLOADS_DIR: /uploads
@@ -88,11 +94,11 @@ services:
       - uploads:/uploads:ro
       - backups:/backups
     depends_on:
-      postgres:
+      casamargarita-postgres:
         condition: service_healthy
     restart: unless-stopped
 
-  postgres:
+  casamargarita-postgres:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: art

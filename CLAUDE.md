@@ -46,6 +46,13 @@ castellano, con sus tildes.
   si te saltas eso, el cambio no se ve. **De ahí no puede salir una `Date`**:
   Next guarda con `JSON.stringify` y volvería como texto con el tipo mintiendo,
   así que las fechas se devuelven ya en ISO.
+- **Los servicios de `docker-compose.prod.yml` llevan prefijo
+  (`casamargarita-postgres`, `casamargarita-web`…).** El servidor de Dokploy
+  aloja otros cinco stacks y los engancha a todos a la misma red: un servicio
+  llamado `postgres` a secas resuelve al contenedor del primer proyecto que
+  registrase ese alias. En el proyecto de al lado eso ya provocó que una web
+  hablara con el backend de otra aplicación. El compose de desarrollo puede
+  usar nombres sueltos porque su red no se comparte con nadie.
 - **El limitador de intentos es en memoria.** Vale para una instancia, que es lo
   que despliega Dokploy. Si algún día hay réplicas, va a Redis.
 - **Los ajustes del sitio viven en la fila `singleton` de `Artist`.** Son dos
