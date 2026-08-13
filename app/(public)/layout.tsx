@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { LanguageSwitch } from "@/components/public/LanguageSwitch";
 import { OilTransitions } from "@/components/webgl/OilTransitions";
@@ -17,9 +18,26 @@ export default async function PublicLayout({
     <div className="flex min-h-dvh flex-col">
       <OilTransitions />
       <header className="border-b border-[color:var(--color-canvas-dim)]">
-        <nav className="mx-auto flex max-w-6xl items-baseline gap-8 px-6 py-8">
-          <Link href="/" className="display text-2xl tracking-tight">
-            {name}
+        {/* items-center y no items-baseline: el logotipo es una imagen y no
+            tiene línea base que casar con la de los enlaces. */}
+        <nav className="mx-auto flex max-w-6xl items-center gap-8 px-6 py-8">
+          {/* El logotipo lleva el nombre dibujado, así que el enlace no
+              necesita texto visible; el alt es lo que oye un lector de
+              pantalla y lo que se ve si la imagen no carga. Las medidas son
+              las del recuadro recortado del SVG: fijan la proporción y evitan
+              que la cabecera dé un salto mientras carga. */}
+          <Link href="/" className="block shrink-0">
+            <Image
+              src="/logo.svg"
+              alt={`${SITE_NAME}, galería de arte`}
+              width={1025}
+              height={581}
+              priority
+              // El logotipo apila tres líneas y la de abajo es la más
+              // pequeña: por debajo de unos 70 px «GALERÍA DE ARTE» deja de
+              // leerse y se convierte en una mancha gris.
+              className="h-16 w-auto sm:h-20"
+            />
           </Link>
           <div className="ml-auto flex gap-6 text-sm">
             <Link href="/galeria" className="hover:text-[color:var(--color-oil)]">
