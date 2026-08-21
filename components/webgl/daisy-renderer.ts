@@ -305,9 +305,10 @@ export function createDaisyRenderer(
         gl.bindTexture(gl.TEXTURE_2D, slot.texture);
         gl.uniformMatrix4fv(uniforms.matrix, false, matrix);
         gl.uniform1f(uniforms.opacity, daisy.opacity * MAX_OPACITY);
-        // Cuanto más lejos, más borrosa: la profundidad de campo es lo que
-        // separa los planos cuando todos son la misma estampa plana.
-        gl.uniform1f(uniforms.blur, Math.min(-daisy.z / 6, 2.2));
+        // La profundidad de campo es lo que separa los planos cuando todos son
+        // la misma estampa plana. Viene resuelto del campo: cada carril decide
+        // cuánta bruma le toca.
+        gl.uniform1f(uniforms.blur, daisy.blur);
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       }
     },
