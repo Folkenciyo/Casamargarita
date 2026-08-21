@@ -120,10 +120,36 @@ describe("fieldAt", () => {
     }
   });
 
-  it("no amontona las tres flores en el mismo lado", () => {
+  it("no amontona las flores en el mismo lado", () => {
     for (let time = 0; time < 400; time += 1.1) {
       const lados = new Set(fieldAt(time).map((d) => Math.sign(d.x)));
       expect(lados.size).toBeGreaterThan(1);
+    }
+  });
+
+  it("planta unas cuantas hacia el centro y otras en los márgenes", () => {
+    const campo = fieldAt(31);
+    expect(campo.filter((d) => Math.abs(d.x) < 0.42).length).toBeGreaterThan(1);
+    expect(campo.filter((d) => Math.abs(d.x) > 0.42).length).toBeGreaterThan(1);
+  });
+
+  it("enfoca las del centro más que las del margen", () => {
+    const campo = fieldAt(31);
+    const centro = campo.filter((d) => Math.abs(d.x) < 0.42);
+    const margen = campo.filter((d) => Math.abs(d.x) > 0.42);
+    const peorDelCentro = Math.max(...centro.map((d) => d.blur));
+    // Comparado con el margen que está a una profundidad parecida: contra la
+    // flor pegada a la cámara no habría mérito.
+    const lejanoDelMargen = Math.max(...margen.map((d) => d.blur));
+    expect(peorDelCentro).toBeLessThan(lejanoDelMargen);
+  });
+
+  it("mantiene el desenfoque dentro de lo que dan los mipmaps", () => {
+    for (let time = 0; time < 400; time += 1.7) {
+      for (const daisy of fieldAt(time)) {
+        expect(daisy.blur).toBeGreaterThanOrEqual(0);
+        expect(daisy.blur).toBeLessThanOrEqual(2.2);
+      }
     }
   });
 

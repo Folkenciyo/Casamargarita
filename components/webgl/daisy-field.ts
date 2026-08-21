@@ -7,11 +7,8 @@
  * saldría un valor distinto y la escena temblaría.
  */
 
-/** Cuántas flores hay a la vez. Tres: es un fondo, no un ramo. */
-export const SLOTS = 3;
-
 /** Segundos que dura una flor de brotar a desvanecerse del todo. */
-export const LIFE_S = 22;
+export const LIFE_S = 26;
 
 /** Cuánto tarda en aparecer y en irse. Largo: nadie debe verla «encenderse». */
 export const FADE_S = 5;
@@ -24,20 +21,35 @@ export const TEXTURES = [
 ] as const;
 
 /**
- * Profundidad de cada plano, en metros hacia dentro de la pantalla. La cercana
- * se mueve mucho con el scroll y la lejana casi nada: de ahí sale el parallax,
- * no hace falta calcularlo aparte.
- */
-const DEPTHS = [-2.4, -6, -11] as const;
-
-/**
- * Alto de la flor como fracción de lo que se ve a su profundidad.
+ * Un carril por flor simultánea: dónde brota, a qué profundidad y con cuánto
+ * detalle. Cinco: los tres de los márgenes, que enmarcan sin estorbar, y dos
+ * hacia el centro, que son los que hacen que el campo no parezca a medio
+ * plantar. Del centro se ocupan los enfocados a propósito —son los que se
+ * miran de frente, y ahí un borrón se lee como una mancha de suciedad—, pero
+ * con la misma opacidad de marca de agua que los demás.
  *
- * Fracción y no metros: así la composición es la misma en un móvil y en un
- * monitor ancho. En metros, la flor lejana se encogería hasta ser un punto en
- * cuanto la perspectiva hiciera su trabajo.
+ * `z` en metros hacia dentro de la pantalla: la cercana se mueve mucho con el
+ * scroll y la lejana casi nada, y de ahí sale el parallax sin calcularlo
+ * aparte.
+ *
+ * `height` en fracción de lo que se ve a esa profundidad, no en metros: así la
+ * composición aguanta igual en un móvil que en un monitor ancho. En metros, la
+ * flor lejana se encogería hasta ser un punto en cuanto la perspectiva hiciera
+ * su trabajo.
+ *
+ * `side` fijo y no al azar: con el lado sorteado, tarde o temprano salían las
+ * cinco apiladas en la misma esquina.
  */
-const HEIGHTS = [0.52, 0.44, 0.36] as const;
+const LANES = [
+  { z: -2.4, height: 0.52, side: -1, near: 0.45, far: 0.95, focus: 0 },
+  { z: -6, height: 0.44, side: 1, near: 0.45, far: 0.95, focus: 0 },
+  { z: -11, height: 0.36, side: -1, near: 0.45, far: 0.95, focus: 0 },
+  { z: -4.2, height: 0.4, side: 1, near: 0.06, far: 0.4, focus: 0.7 },
+  { z: -7.8, height: 0.34, side: -1, near: 0.06, far: 0.4, focus: 0.75 },
+] as const;
+
+/** Cuántas flores hay a la vez. Es un fondo, no un ramo. */
+export const SLOTS = LANES.length;
 
 export type Daisy = {
   /** Índice dentro de TEXTURES. */
@@ -48,6 +60,8 @@ export type Daisy = {
   z: number;
   /** Alto en fracción del alto visible a su profundidad. */
   height: number;
+  /** Sesgo de mip: 0 nítida, 2 y pico disuelta en el fondo. */
+  blur: number;
   /** Giro sobre el eje vertical, radianes. Le quita la planitud de la estampa. */
   turn: number;
   /** 0 recién brotada o ya ida, 1 en plena vida. */
@@ -107,23 +121,26 @@ export function fieldAt(time: number): Daisy[] {
   const field: Daisy[] = [];
 
   for (let slot = 0; slot < SLOTS; slot += 1) {
-    // Reparto de los ciclos: el hueco 0 empieza en su sitio, el 1 a un tercio
-    // de vida, el 2 a dos tercios.
+    const lane = LANES[slot]!;
+
+    // Los ciclos se reparten la vuelta completa: con cinco huecos, cada uno
+    // brota a un quinto de vida del anterior y nunca coinciden dos entradas.
     const local = time + (slot * LIFE_S) / SLOTS;
     const generation = Math.floor(local / LIFE_S);
     const age = local - generation * LIFE_S;
 
     const seed = generation * 977 + slot * 31;
-    const lane = random01(seed);
+    const spot = random01(seed);
 
     field.push({
       texture: Math.floor(random01(seed + 7) * TEXTURES.length) % TEXTURES.length,
-      // Los huecos alternan mitad izquierda y derecha para que no se apelotonen
-      // las tres en el mismo lado del encuadre. Rondan el borde a propósito: es
-      // un margen, no un jarrón en mitad de la mesa.
-      x: (slot % 2 === 0 ? -1 : 1) * (0.45 + lane * 0.5),
-      z: DEPTHS[slot % DEPTHS.length]!,
-      height: HEIGHTS[slot % HEIGHTS.length]! * (0.85 + random01(seed + 13) * 0.3),
+      x: lane.side * (lane.near + spot * (lane.far - lane.near)),
+      z: lane.z,
+      height: lane.height * (0.85 + random01(seed + 13) * 0.3),
+      // El desenfoque lo marca la profundidad, y el carril decide cuánto de esa
+      // bruma se le perdona: las centrales se miran de frente y ahí un borrón
+      // se lee como suciedad en la pantalla, no como lejanía.
+      blur: Math.min(-lane.z / 6, 2.2) * (1 - lane.focus),
       // Media vuelta larga, nunca de perfil: de canto la estampa desaparece.
       turn: (random01(seed + 19) - 0.5) * 0.9,
       opacity: lifeOpacity(age),
