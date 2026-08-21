@@ -68,6 +68,11 @@ castellano, con sus tildes.
   `responsiveWidths()`, no `widths` a pelo.
 - **El formato (pequeño/medio/grande) se deduce, no se guarda.** Está en las
   medidas; un campo aparte solo podría contradecirlas.
+- **Las texturas del fondo de margaritas son 512×1024 con la flor centrada y
+  hueco transparente.** El lienzo es cuadrado en potencias de dos porque WebGL 1
+  solo genera mipmaps así, y sin mipmaps la flor lejana hierve de aliasing y no
+  hay desenfoque de profundidad. Se generan con `pnpm build:daisies` a partir de
+  los PNG originales; no sustituyas el `.webp` a mano.
 - **Si añades un `<script>` inline, pásale `scriptNonce()`.** Con la CSP
   activa, sin nonce el navegador lo bloquea.
 - **De un fichero con `"use server"` solo se exportan funciones async.** Una
@@ -84,6 +89,7 @@ castellano, con sus tildes.
 | Los filtros de la galería pública | `lib/public/gallery-filters.ts` + `lib/formats.ts` |
 | Cualquier lectura del sitio público | `lib/public/queries.ts` — y su etiqueta en `lib/cache.ts` |
 | Cualquier escritura del panel | `lib/admin/actions.ts` y `series-actions.ts` — toda Server Action empieza por `requireAdmin()` y termina invalidando sus etiquetas |
+| El fondo de margaritas | `components/webgl/daisy-field.ts` (composición y ciclo, puro y con tests) y `daisy-renderer.ts` (WebGL) |
 | El pipeline de imágenes | `lib/images/pipeline.ts` (los anchos están duplicados en `urls.ts` a propósito; un test lo vigila) |
 | Identidad del sitio (título, og:image) | `lib/site.ts` + variables `PUBLIC_SITE_*` |
 | Cabeceras de seguridad o la CSP | `lib/http/security-headers.ts`, aplicadas en `middleware.ts` |
