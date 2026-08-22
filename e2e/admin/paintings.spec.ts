@@ -65,7 +65,9 @@ test("ciclo completo de una obra desde el panel", async ({ page }) => {
 
     await expect(page.getByRole("heading", { name: "Fotos (1)" })).toBeVisible();
     await describirFoto(0, "Obra de prueba");
-    await expect(page.getByText("Principal")).toBeVisible();
+    // Exacto: `getByText` no distingue mayúsculas, y en esta pantalla se habla
+    // de «la principal» al explicar las fotos de detalle.
+    await expect(page.getByText("Principal", { exact: true })).toBeVisible();
   });
 
   await test.step("subir dos fotos de una vez", async () => {
