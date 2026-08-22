@@ -68,6 +68,25 @@ castellano, con sus tildes.
   `responsiveWidths()`, no `widths` a pelo.
 - **El formato (pequeño/medio/grande) se deduce, no se guarda.** Está en las
   medidas; un campo aparte solo podría contradecirlas.
+- **El `bodySizeLimit` de `next.config.ts` no es opcional.** Next corta el
+  cuerpo de toda Server Action a 1 MB si nadie dice otra cosa, y por ahí pasan
+  todas las subidas de fotos. Sin esa línea, el pipeline anunciaba 25 MB y el
+  panel devolvía un 413 antes de llegar a ejecutarlo: no entraba ninguna foto
+  de cámara, ni en obra, ni en diario, ni el retrato. El número sale de
+  `lib/images/limits.ts` —un módulo sin dependencias, porque `next.config.ts`
+  no puede arrastrar sharp— y lleva un mega de margen sobre `MAX_UPLOAD_BYTES`
+  para el sobre del multipart.
+- **Las fotos de detalle no se generan solas.** El botón «Generar fotos de
+  detalle» recorta la principal a petición, y solo si tiene 2000 px por el lado
+  corto: por debajo, ampliar un recorte enseña píxeles, no pincelada. Cuando no
+  llega se dice en la ficha en vez de esconder el botón. Ojo con la siembra de
+  demostración: `seed-demo-art.ts` sí fabrica detalles ampliando desde 1686 px,
+  y por eso salen blandos —es material de relleno, no el comportamiento del
+  panel.
+- **Las imágenes de los tests tienen que pesar.** Un JPEG de color plano de
+  1200×900 ocupa diez kilobytes: con esos ficheros la suite pasaba en verde
+  mientras el panel rechazaba todo. Lo que se sube de verdad se prueba con
+  `heavyPaintingJpeg()` (ruido, varios megas) en `e2e/admin/upload-size.spec.ts`.
 - **Si añades un `<script>` inline, pásale `scriptNonce()`.** Con la CSP
   activa, sin nonce el navegador lo bloquea.
 - **De un fichero con `"use server"` solo se exportan funciones async.** Una
@@ -84,6 +103,7 @@ castellano, con sus tildes.
 | Los filtros de la galería pública | `lib/public/gallery-filters.ts` + `lib/formats.ts` |
 | Cualquier lectura del sitio público | `lib/public/queries.ts` — y su etiqueta en `lib/cache.ts` |
 | Cualquier escritura del panel | `lib/admin/actions.ts` y `series-actions.ts` — toda Server Action empieza por `requireAdmin()` y termina invalidando sus etiquetas |
+| Las fotos de detalle recortadas | `lib/images/details.ts` (zonas y umbral, puro y con tests) + `generatePaintingDetails` en `lib/admin/actions.ts` |
 | El pipeline de imágenes | `lib/images/pipeline.ts` (los anchos están duplicados en `urls.ts` a propósito; un test lo vigila) |
 | Identidad del sitio (título, og:image) | `lib/site.ts` + variables `PUBLIC_SITE_*` |
 | Cabeceras de seguridad o la CSP | `lib/http/security-headers.ts`, aplicadas en `middleware.ts` |

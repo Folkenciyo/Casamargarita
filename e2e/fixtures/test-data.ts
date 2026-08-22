@@ -141,4 +141,6 @@ export const TEST_IPS = {
   adminInquiries: "203.0.113.42",
   adminSeries: "203.0.113.43",
   adminTrash: "203.0.113.44",
+  adminUploadSize: "203.0.113.45",
+  adminDetails: "203.0.113.46",
 } as const;

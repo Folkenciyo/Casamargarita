@@ -1,7 +1,8 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import { fileTypeFromBuffer } from "file-type";
 import sharp from "sharp";
+import { MAX_DIMENSION, MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "./limits";
 
 /**
  * Duplicado a propósito de `urls.ts`: ese módulo lo importan componentes de
@@ -12,8 +13,11 @@ import sharp from "sharp";
 export const PIPELINE_WIDTHS = [400, 800, 1600, 3200] as const;
 const IMAGE_WIDTHS = PIPELINE_WIDTHS;
 
-export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
-export const MAX_DIMENSION = 12000;
+export {
+  MAX_DIMENSION,
+  MAX_UPLOAD_BYTES,
+  MAX_UPLOAD_MB,
+} from "./limits";
 
 const ALLOWED_MIME = new Set([
   "image/jpeg",
@@ -76,9 +80,7 @@ async function storeImage({
   uploadsDir: string;
 }): Promise<StoredImage> {
   if (buffer.byteLength > MAX_UPLOAD_BYTES) {
-    throw new RangeError(
-      `Fichero demasiado grande (máximo ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)} MB)`,
-    );
+    throw new RangeError(`Fichero demasiado grande (máximo ${MAX_UPLOAD_MB} MB)`);
   }
 
   // Magic bytes, no la extensión ni el Content-Type que envíe el navegador.
@@ -139,6 +141,37 @@ async function storeImage({
     widths: [...widths],
     blurDataUrl: `data:image/webp;base64,${blur.toString("base64")}`,
   };
+}
+
+/**
+ * La copia maestra de una imagen ya guardada, para volver a trabajar sobre
+ * ella. Es la que se normalizó al subir —orientación aplicada, EXIF fuera— y
+ * la de más resolución que hay: las variantes servidas están reducidas.
+ */
+export async function readOriginal(
+  baseDir: string,
+  basePath: string,
+): Promise<Buffer> {
+  return readFile(join(resolveUploadPath(baseDir, basePath), "orig.jpg"));
+}
+
+/** Recorta una región y la devuelve como JPEG, lista para el pipeline. */
+export async function cropRegion(
+  buffer: Buffer,
+  region: { left: number; top: number; width: number; height: number },
+): Promise<Buffer> {
+  return sharp(buffer, { limitInputPixels: MAX_DIMENSION ** 2 })
+    .extract(region)
+    .jpeg({ quality: 95 })
+    .toBuffer();
+}
+
+/** Las medidas de una imagen en memoria, sin escribir nada. */
+export async function measure(
+  buffer: Buffer,
+): Promise<{ width: number; height: number }> {
+  const { width = 0, height = 0 } = await sharp(buffer).metadata();
+  return { width, height };
 }
 
 export async function storePaintingImage({
