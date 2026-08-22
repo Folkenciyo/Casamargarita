@@ -87,6 +87,11 @@ castellano, con sus tildes.
   1200×900 ocupa diez kilobytes: con esos ficheros la suite pasaba en verde
   mientras el panel rechazaba todo. Lo que se sube de verdad se prueba con
   `heavyPaintingJpeg()` (ruido, varios megas) en `e2e/admin/upload-size.spec.ts`.
+- **Las texturas del fondo de margaritas son 512×1024 con la flor centrada y
+  hueco transparente.** El lienzo es cuadrado en potencias de dos porque WebGL 1
+  solo genera mipmaps así, y sin mipmaps la flor lejana hierve de aliasing y no
+  hay desenfoque de profundidad. Se generan con `pnpm build:daisies` a partir de
+  los PNG originales; no sustituyas el `.webp` a mano.
 - **Si añades un `<script>` inline, pásale `scriptNonce()`.** Con la CSP
   activa, sin nonce el navegador lo bloquea.
 - **De un fichero con `"use server"` solo se exportan funciones async.** Una
@@ -104,6 +109,7 @@ castellano, con sus tildes.
 | Cualquier lectura del sitio público | `lib/public/queries.ts` — y su etiqueta en `lib/cache.ts` |
 | Cualquier escritura del panel | `lib/admin/actions.ts` y `series-actions.ts` — toda Server Action empieza por `requireAdmin()` y termina invalidando sus etiquetas |
 | Las fotos de detalle recortadas | `lib/images/details.ts` (zonas y umbral, puro y con tests) + `generatePaintingDetails` en `lib/admin/actions.ts` |
+| El fondo de margaritas | `components/webgl/daisy-field.ts` (composición y ciclo, puro y con tests) y `daisy-renderer.ts` (WebGL) |
 | El pipeline de imágenes | `lib/images/pipeline.ts` (los anchos están duplicados en `urls.ts` a propósito; un test lo vigila) |
 | Identidad del sitio (título, og:image) | `lib/site.ts` + variables `PUBLIC_SITE_*` |
 | Cabeceras de seguridad o la CSP | `lib/http/security-headers.ts`, aplicadas en `middleware.ts` |

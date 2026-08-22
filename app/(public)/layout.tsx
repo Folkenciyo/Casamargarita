@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { LanguageSwitch } from "@/components/public/LanguageSwitch";
+import { DaisyField } from "@/components/webgl/DaisyField";
 import { OilTransitions } from "@/components/webgl/OilTransitions";
 import { cabeceraPublica } from "@/lib/public/queries";
 import { SITE_NAME } from "@/lib/site";
@@ -16,6 +17,7 @@ export default async function PublicLayout({
 
   return (
     <div className="flex min-h-dvh flex-col">
+      <DaisyField />
       <OilTransitions />
       <header className="border-b border-[color:var(--color-canvas-dim)]">
         {/* items-center y no items-baseline: el logotipo es una imagen y no
