@@ -1,13 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
+import { useFormStatus } from "react-dom";
 import {
   deleteImage,
+  generatePaintingDetails,
   moveImage,
   reorderImages,
   setPrimaryImage,
   updateImageAlt,
+  type ActionState,
 } from "@/lib/admin/actions";
+import {
+  DETAIL_COUNT,
+  DETAIL_MIN_SOURCE_PX,
+  canGenerateDetails,
+} from "@/lib/images/details";
 import { imageUrl } from "@/lib/images/urls";
 import { MultiUpload } from "./MultiUpload";
 
@@ -15,9 +23,75 @@ type ImageItem = {
   id: string;
   basePath: string;
   widths: number[];
+  width: number;
+  height: number;
   isPrimary: boolean;
   alt: string | null;
 };
+
+function BotonDetalles() {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className="rounded border border-[color:var(--color-ink)] px-4 py-2 text-sm disabled:opacity-50"
+    >
+      {pending ? "Recortando…" : `Generar ${DETAIL_COUNT} fotos de detalle`}
+    </button>
+  );
+}
+
+/**
+ * Atajo para sacar detalles de la foto principal cuando no hay tomas cercanas.
+ *
+ * El botón solo se ofrece si la foto da resolución de sobra: por debajo de eso
+ * el recorte enseña píxeles ampliados y no pincelada. Cuando no llega se dice,
+ * en vez de esconder el botón sin más: quien no ve una opción no puede
+ * adivinar que existe ni qué le falta para tenerla.
+ */
+function GenerarDetalles({
+  paintingId,
+  principal,
+}: {
+  paintingId: string;
+  principal: ImageItem | undefined;
+}) {
+  const [estado, formAction] = useActionState<ActionState, FormData>(
+    generatePaintingDetails.bind(null, paintingId),
+    {},
+  );
+
+  if (!principal) return null;
+
+  if (!canGenerateDetails(principal.width, principal.height)) {
+    return (
+      <p className="mb-6 max-w-md text-sm text-[color:var(--color-ink-soft)]">
+        Las fotos de detalle se recortan de la principal, y esta es de{" "}
+        {principal.width}×{principal.height} px: hacen falta{" "}
+        {DETAIL_MIN_SOURCE_PX} px por el lado corto para que el recorte no salga
+        blando. Súbela más grande, o haz las tomas de cerca con la cámara.
+      </p>
+    );
+  }
+
+  return (
+    <form action={formAction} className="mb-6 grid gap-2 sm:max-w-md">
+      {estado.error ? (
+        <p role="alert" className="rounded bg-red-50 p-3 text-red-800">
+          {estado.error}
+        </p>
+      ) : null}
+      <p className="text-sm text-[color:var(--color-ink-soft)]">
+        ¿Sin fotos de cerca? Se pueden recortar de la principal. Salen como
+        fotos normales: se borran y se reordenan igual que las demás.
+      </p>
+      <div>
+        <BotonDetalles />
+      </div>
+    </form>
+  );
+}
 
 export function ImageManager({
   paintingId,
@@ -59,6 +133,11 @@ export function ImageManager({
       </h2>
 
       <MultiUpload paintingId={paintingId} />
+
+      <GenerarDetalles
+        paintingId={paintingId}
+        principal={images.find((imagen) => imagen.isPrimary) ?? images[0]}
+      />
 
       {orden.length > 1 ? (
         <p className="mb-3 text-sm text-[color:var(--color-ink-soft)]">

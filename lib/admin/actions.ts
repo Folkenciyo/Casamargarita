@@ -8,7 +8,15 @@ import { CACHE_TAGS, invalidar } from "@/lib/cache";
 import { uniqueSlug } from "@/lib/catalog";
 import { prisma } from "@/lib/db";
 import {
+  canGenerateDetails,
+  detailCaption,
+  detailCrops,
+} from "@/lib/images/details";
+import {
+  cropRegion,
   deleteUploads,
+  measure,
+  readOriginal,
   storeArtistPortrait,
   storePaintingImage,
   uploadsDir,
@@ -236,6 +244,88 @@ export async function uploadPaintingImage(
     },
   });
 
+  refreshPublicViews(painting.slug);
+  return { ok: true };
+}
+
+/**
+ * Fotos de detalle a partir de la principal: tres recortes ampliados de zonas
+ * distintas del cuadro.
+ *
+ * No se dispara al subir, sino a petición. Un recorte enseña los píxeles que
+ * ya había en la foto general, no la pincelada de cerca; con una toma de museo
+ * el resultado convence y con una foto de móvil se nota. Quien mira el cuadro
+ * decide, y por eso son fotos normales: se borran o se reordenan como las
+ * demás.
+ */
+export async function generatePaintingDetails(
+  paintingId: string,
+  _state: ActionState,
+  _formData: FormData,
+): Promise<ActionState> {
+  await requireAdmin();
+
+  const painting = await prisma.painting.findUnique({
+    where: { id: paintingId },
+    select: {
+      slug: true,
+      images: {
+        orderBy: [{ isPrimary: "desc" }, { position: "asc" }],
+        select: { basePath: true },
+      },
+    },
+  });
+  if (!painting) return { error: "La obra ya no existe" };
+
+  const principal = painting.images[0];
+  if (!principal) return { error: "Sube antes una foto de la obra" };
+
+  try {
+    const original = await readOriginal(uploadsDir(), principal.basePath);
+    const { width, height } = await measure(original);
+
+    if (!canGenerateDetails(width, height)) {
+      return {
+        error:
+          "La foto no tiene resolución suficiente para sacar detalles nítidos. Haz las tomas de cerca con la cámara.",
+      };
+    }
+
+    // En serie y no en paralelo, igual que la subida de varias fotos: cada
+    // recorte genera seis variantes con sharp y tres a la vez se comen la
+    // memoria del contenedor.
+    const position = painting.images.length;
+    for (const [index, crop] of detailCrops(width, height).entries()) {
+      const imageId = randomUUID();
+      const stored = await storePaintingImage({
+        buffer: await cropRegion(original, crop),
+        paintingId,
+        imageId,
+        uploadsDir: uploadsDir(),
+      });
+
+      await prisma.image.create({
+        data: {
+          id: imageId,
+          paintingId,
+          basePath: stored.basePath,
+          width: stored.width,
+          height: stored.height,
+          widths: stored.widths,
+          blurDataUrl: stored.blurDataUrl,
+          alt: detailCaption(index),
+          isPrimary: false,
+          position: position + index,
+        },
+      });
+    }
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "No se pudo procesar",
+    };
+  }
+
+  revalidatePath(`/admin/obras/${paintingId}`);
   refreshPublicViews(painting.slug);
   return { ok: true };
 }

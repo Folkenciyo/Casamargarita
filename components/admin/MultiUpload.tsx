@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { uploadPaintingImage } from "@/lib/admin/actions";
+import { tooLargeMessage } from "@/lib/images/limits";
 
 type EstadoFichero = {
   nombre: string;
@@ -40,6 +41,18 @@ export function MultiUpload({ paintingId }: { paintingId: string }) {
     setSubiendo(true);
 
     for (const [indice, fichero] of pendientes.entries()) {
+      // Lo que no cabe se descarta aquí: enviarlo solo sirve para esperar a que
+      // suba entero y que el servidor lo rechace al final.
+      const demasiado = tooLargeMessage(fichero.size);
+      if (demasiado) {
+        setFicheros((actual) =>
+          actual.map((item, i) =>
+            i === indice ? { ...item, estado: "error", error: demasiado } : item,
+          ),
+        );
+        continue;
+      }
+
       setFicheros((actual) =>
         actual.map((item, i) =>
           i === indice ? { ...item, estado: "procesando" } : item,
@@ -126,7 +139,9 @@ export function MultiUpload({ paintingId }: { paintingId: string }) {
               <span
                 className={
                   fichero.estado === "error"
-                    ? "shrink-0 text-red-700"
+                    ? // Sin `shrink-0`: el motivo del fallo es una frase entera
+                      // y aquí es más útil leerla que mantener la columna.
+                      "text-right text-red-700"
                     : "shrink-0 text-[color:var(--color-ink-soft)]"
                 }
               >

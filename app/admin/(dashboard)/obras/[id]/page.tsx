@@ -91,6 +91,10 @@ export default async function EditPaintingPage({
           id: image.id,
           basePath: image.basePath,
           widths: image.widths,
+          // Las del original normalizado: con ellas el panel decide si merece
+          // la pena ofrecer los detalles recortados.
+          width: image.width,
+          height: image.height,
           isPrimary: image.isPrimary,
           alt: image.alt,
         }))}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import type { ActionState } from "@/lib/admin/actions";
 import {
@@ -8,6 +8,7 @@ import {
   updateJournalCaption,
   uploadJournalImage,
 } from "@/lib/admin/journal-actions";
+import { tooLargeMessage } from "@/lib/images/limits";
 import { imageUrl } from "@/lib/images/urls";
 
 type Foto = {
@@ -18,12 +19,12 @@ type Foto = {
   caption: string;
 };
 
-function Subir() {
+function Subir({ bloqueado }: { bloqueado: boolean }) {
   const { pending } = useFormStatus();
   return (
     <button
       type="submit"
-      disabled={pending}
+      disabled={pending || bloqueado}
       className="rounded bg-[color:var(--color-ink)] px-4 py-2 text-[color:var(--color-canvas)] disabled:opacity-50"
     >
       {pending ? "Procesando…" : "Añadir foto"}
@@ -47,15 +48,18 @@ export function JournalImages({
     uploadJournalImage.bind(null, entryId),
     {},
   );
+  // Se avisa al elegir el fichero y no al enviarlo: así nadie espera a que
+  // suban veinte megas para enterarse de que no caben.
+  const [demasiado, setDemasiado] = useState<string | null>(null);
 
   return (
     <section>
       <h2 className="display mb-4 text-xl">Fotos del proceso ({images.length})</h2>
 
       <form action={formAction} className="mb-8 grid gap-3 sm:max-w-md">
-        {estado.error ? (
+        {(demasiado ?? estado.error) ? (
           <p role="alert" className="rounded bg-red-50 p-3 text-red-800">
-            {estado.error}
+            {demasiado ?? estado.error}
           </p>
         ) : null}
 
@@ -65,6 +69,10 @@ export function JournalImages({
           accept="image/jpeg,image/png,image/webp,image/avif,image/tiff"
           required
           aria-label="Foto del proceso"
+          onChange={(evento) => {
+            const fichero = evento.target.files?.[0];
+            setDemasiado(fichero ? tooLargeMessage(fichero.size) : null);
+          }}
         />
         <input
           type="text"
@@ -73,7 +81,7 @@ export function JournalImages({
           className="rounded border border-[color:var(--color-canvas-dim)] bg-white px-3 py-2"
         />
         <div>
-          <Subir />
+          <Subir bloqueado={demasiado !== null} />
         </div>
       </form>
 
