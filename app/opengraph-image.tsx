@@ -39,8 +39,8 @@ export default function OpengraphImage() {
       >
         <img
           src={`data:image/png;base64,${logo}`}
-          width={420}
-          height={420}
+          width={600}
+          height={600}
           alt=""
         />
 
