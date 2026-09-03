@@ -72,7 +72,11 @@ export function CertificadoAcciones({
       ).toBlob();
 
       descargar(blob, `certificado-${painting.slug}.pdf`);
-    } catch {
+    } catch (error) {
+      // El detalle solo interesa a quien lo investigue: el mensaje en
+      // pantalla se queda genérico, pero sin esto no hay forma de saber
+      // qué falló sin reproducirlo a ciegas.
+      console.error("No se pudo generar el certificado en PDF", error);
       setError("No se pudo generar el PDF. Prueba a imprimir en su lugar.");
     } finally {
       setGenerando(false);
