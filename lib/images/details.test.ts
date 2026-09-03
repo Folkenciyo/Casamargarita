@@ -55,9 +55,9 @@ describe("detailCrops", () => {
   });
 
   it("saca un detalle aprovechable de un original en el umbral", () => {
-    // 800 px es la primera variante decente del pipeline.
+    // 400 px es el ancho servible más pequeño del pipeline.
     const [primero] = detailCrops(DETAIL_MIN_SOURCE_PX, DETAIL_MIN_SOURCE_PX);
-    expect(primero!.width).toBeGreaterThanOrEqual(800);
+    expect(primero!.width).toBeGreaterThanOrEqual(400);
   });
 
   it("mira a tres sitios distintos del cuadro", () => {

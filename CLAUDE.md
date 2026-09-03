@@ -77,12 +77,14 @@ castellano, con sus tildes.
   no puede arrastrar sharp— y lleva un mega de margen sobre `MAX_UPLOAD_BYTES`
   para el sobre del multipart.
 - **Las fotos de detalle no se generan solas.** El botón «Generar fotos de
-  detalle» recorta la principal a petición, y solo si tiene 2000 px por el lado
-  corto: por debajo, ampliar un recorte enseña píxeles, no pincelada. Cuando no
-  llega se dice en la ficha en vez de esconder el botón. Ojo con la siembra de
-  demostración: `seed-demo-art.ts` sí fabrica detalles ampliando desde 1686 px,
-  y por eso salen blandos —es material de relleno, no el comportamiento del
-  panel.
+  detalle» recorta la principal a petición, y solo si tiene 1000 px por el
+  lado corto: el pipeline nunca amplía, así que ese es el mínimo que da un
+  recorte del 40 % de al menos 400 px, el ancho servible más pequeño. Un
+  cuadro pequeño sale con detalle más discreto que uno grande, pero pincelada
+  real, nunca píxeles estirados. Cuando no llega ni a eso se dice en la ficha
+  en vez de esconder el botón. Ojo con la siembra de demostración:
+  `seed-demo-art.ts` sí fabrica detalles ampliando a mano desde 1686 px —eso
+  no es el pipeline real, es relleno para que la demo no salga vacía.
 - **Las imágenes de los tests tienen que pesar.** Un JPEG de color plano de
   1200×900 ocupa diez kilobytes: con esos ficheros la suite pasaba en verde
   mientras el panel rechazaba todo. Lo que se sube de verdad se prueba con

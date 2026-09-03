@@ -16,13 +16,15 @@ export type DetailCrop = {
 /**
  * Lado menor mínimo del original para que un recorte valga la pena.
  *
- * Por debajo de esto el detalle sale blando: ampliar píxeles no enseña
- * pincelada, y en una galería que vende materia pictórica eso se nota. El
- * número sale de la cuenta al revés: con un recorte del 40 %, 2000 px de lado
- * menor dan 800 px de detalle, que es la primera variante decente del
- * pipeline.
+ * El pipeline nunca amplía ("Anchos generados realmente: [400, 800, 1600]",
+ * ver el schema): lo que fija este número es que el recorte llegue al menos
+ * al ancho servible más pequeño, 400 px, no a un tamaño "grande". Por debajo
+ * de eso no habría ninguna variante que servir. El número sale de la cuenta
+ * al revés: con un recorte del 40 %, 1000 px de lado menor dan justo 400 px
+ * de detalle. Un cuadro pequeño sale con un detalle más discreto que uno
+ * grande, pero pincelada real, nunca píxeles estirados.
  */
-export const DETAIL_MIN_SOURCE_PX = 2000;
+export const DETAIL_MIN_SOURCE_PX = 1000;
 
 /** Qué parte del lado menor abarca cada detalle. */
 const DETAIL_FRACTION = 0.4;
