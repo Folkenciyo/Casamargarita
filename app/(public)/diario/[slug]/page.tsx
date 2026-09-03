@@ -37,9 +37,11 @@ export async function generateMetadata({
       title: entrada.title,
       description: entrada.summary || undefined,
       publishedTime: entrada.publishedAt,
+      // Sin foto: se omite la clave, no un array vacío, para que herede la
+      // imagen de marca en vez de anunciar "sin imagen".
       images: portada
         ? [imageUrl(portada.basePath, portada.widths.at(-2) ?? 800, "webp")]
-        : [],
+        : undefined,
     },
   };
 }

@@ -130,8 +130,13 @@ export async function PaintingView({
             </Link>
           ) : null}
 
-          <h1 className="display mt-2 text-[length:var(--text-title)]">
-            {painting.title}
+          <h1 className="display mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-2 text-[length:var(--text-title)]">
+            <span>{painting.title}</span>
+            {painting.status === "SOLD" ? (
+              <span className="tabular self-center rounded-full bg-[color:var(--color-oil)] px-3 py-1 text-xs font-sans tracking-[0.15em] text-[color:var(--color-canvas)] uppercase">
+                {t.estados.SOLD}
+              </span>
+            ) : null}
           </h1>
 
           <dl className="tabular mt-8 grid grid-cols-[auto_1fr] gap-x-8 gap-y-3 text-sm">

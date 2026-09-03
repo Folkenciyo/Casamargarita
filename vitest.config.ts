@@ -22,6 +22,8 @@ export default defineConfig({
         "lib/db.ts", // instancia el cliente y nada más
         "lib/admin/actions.ts", // Server Actions → e2e/admin/
         "lib/admin/series-actions.ts", // Server Actions → e2e/admin/series.spec.ts
+        "lib/admin/cache-refresh.ts", // llamadas a revalidatePath/revalidateTag, sin lógica que aislar
+        "lib/admin/painting-image-upload.ts", // toca Postgres y disco → e2e/admin/upload-size.spec.ts
         "lib/public/actions.ts", // Server Actions → e2e/public/inquiry.spec.ts
         // Consultas a Postgres envueltas en el caché de datos: `select` y
         // `where`, sin lógica que aislar —la que había vive en lib/catalog.ts,
