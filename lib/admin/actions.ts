@@ -3,14 +3,16 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { refreshArtist, refreshPublicViews } from "@/lib/admin/cache-refresh";
+import { guardarFotoObra } from "@/lib/admin/painting-image-upload";
 import { requireAdmin } from "@/lib/auth/guard";
-import { CACHE_TAGS, invalidar } from "@/lib/cache";
 import { uniqueSlug } from "@/lib/catalog";
 import { prisma } from "@/lib/db";
 import {
   canGenerateDetails,
   detailCaption,
   detailCrops,
+  randomDetailCrop,
 } from "@/lib/images/details";
 import {
   cropRegion,
@@ -24,24 +26,6 @@ import {
 import { artistSchema, paintingSchema } from "@/lib/validation/painting";
 
 export type ActionState = { error?: string; ok?: boolean };
-
-function refreshPublicViews(slug?: string) {
-  // Las vistas públicas leen del caché de datos: sin caducar la etiqueta, el
-  // cambio no se vería aunque se refresque la página.
-  invalidar(CACHE_TAGS.paintings);
-  revalidatePath("/");
-  revalidatePath("/galeria");
-  revalidatePath("/admin");
-  revalidatePath("/admin/obras");
-  if (slug) revalidatePath(`/obra/${slug}`);
-}
-
-/** La ficha, el retrato y los ajustes viven todos en la fila `singleton`. */
-function refreshArtist() {
-  invalidar(CACHE_TAGS.artist);
-  revalidatePath("/artista");
-  revalidatePath("/admin/artista");
-}
 
 function fieldsFrom(formData: FormData) {
   return {
@@ -196,6 +180,11 @@ export async function purgePainting(id: string): Promise<void> {
   redirect("/admin/obras?papelera=si");
 }
 
+/**
+ * Subida sin JavaScript. La que usa progreso real de verdad pasa por
+ * `app/api/admin/obras/[id]/imagenes` (ver `MultiUpload.tsx`); esta se queda
+ * como camino de reserva y comparte el mismo núcleo (`guardarFotoObra`).
+ */
 export async function uploadPaintingImage(
   paintingId: string,
   _state: ActionState,
@@ -208,43 +197,14 @@ export async function uploadPaintingImage(
     return { error: "Selecciona una imagen" };
   }
 
-  const painting = await prisma.painting.findUnique({
-    where: { id: paintingId },
-    select: { slug: true, _count: { select: { images: true } } },
+  const resultado = await guardarFotoObra({
+    paintingId,
+    file,
+    alt: String(formData.get("alt") ?? ""),
   });
-  if (!painting) return { error: "La obra ya no existe" };
+  if (!resultado.ok) return { error: resultado.error };
 
-  const imageId = randomUUID();
-  let stored;
-  try {
-    stored = await storePaintingImage({
-      buffer: Buffer.from(await file.arrayBuffer()),
-      paintingId,
-      imageId,
-      uploadsDir: uploadsDir(),
-    });
-  } catch (error) {
-    return {
-      error: error instanceof Error ? error.message : "No se pudo procesar",
-    };
-  }
-
-  await prisma.image.create({
-    data: {
-      id: imageId,
-      paintingId,
-      basePath: stored.basePath,
-      width: stored.width,
-      height: stored.height,
-      widths: stored.widths,
-      blurDataUrl: stored.blurDataUrl,
-      alt: String(formData.get("alt") ?? "") || null,
-      isPrimary: painting._count.images === 0,
-      position: painting._count.images,
-    },
-  });
-
-  refreshPublicViews(painting.slug);
+  refreshPublicViews(resultado.slug);
   return { ok: true };
 }
 
@@ -315,6 +275,7 @@ export async function generatePaintingDetails(
           blurDataUrl: stored.blurDataUrl,
           alt: detailCaption(index),
           isPrimary: false,
+          isDetail: true,
           position: position + index,
         },
       });
@@ -328,6 +289,64 @@ export async function generatePaintingDetails(
   revalidatePath(`/admin/obras/${paintingId}`);
   refreshPublicViews(painting.slug);
   return { ok: true };
+}
+
+/**
+ * Repite un detalle ya generado, en otra zona al azar de la principal. Solo
+ * para imágenes `isDetail`: una foto subida a mano no tiene de dónde
+ * recortarse de nuevo.
+ */
+export async function regenerateDetailImage(imageId: string): Promise<void> {
+  await requireAdmin();
+
+  const detalle = await prisma.image.findUnique({
+    where: { id: imageId },
+    select: { id: true, isDetail: true, paintingId: true, basePath: true },
+  });
+  if (!detalle || !detalle.isDetail) return;
+
+  const painting = await prisma.painting.findUnique({
+    where: { id: detalle.paintingId },
+    select: {
+      slug: true,
+      images: {
+        where: { isPrimary: true },
+        take: 1,
+        select: { basePath: true },
+      },
+    },
+  });
+  const principal = painting?.images[0];
+  if (!painting || !principal) return;
+
+  const original = await readOriginal(uploadsDir(), principal.basePath);
+  const { width, height } = await measure(original);
+  if (!canGenerateDetails(width, height)) return;
+
+  const nuevoId = randomUUID();
+  const stored = await storePaintingImage({
+    buffer: await cropRegion(original, randomDetailCrop(width, height)),
+    paintingId: detalle.paintingId,
+    imageId: nuevoId,
+    uploadsDir: uploadsDir(),
+  });
+
+  await prisma.image.update({
+    where: { id: imageId },
+    data: {
+      basePath: stored.basePath,
+      width: stored.width,
+      height: stored.height,
+      widths: stored.widths,
+      blurDataUrl: stored.blurDataUrl,
+    },
+  });
+  // Se borra después de guardar el nuevo: si algo fallara antes, la foto no
+  // se queda sin recorte por el camino.
+  await deleteUploads(uploadsDir(), detalle.basePath);
+
+  revalidatePath(`/admin/obras/${detalle.paintingId}`);
+  refreshPublicViews(painting.slug);
 }
 
 export async function deleteImage(imageId: string): Promise<void> {
@@ -479,6 +498,40 @@ export async function movePainting(
       data: { position: current.position },
     }),
   ]);
+
+  refreshPublicViews();
+}
+
+/**
+ * Reordena las obras destacadas para la portada, sin tocar `position` (el
+ * orden de /galeria). Mismo criterio de seguridad que `reorderImages`: se
+ * comprueba que los ids recibidos sean exactamente los de las destacadas
+ * actuales antes de escribir nada.
+ */
+export async function reorderFeaturedPaintings(orderedIds: string[]): Promise<void> {
+  await requireAdmin();
+
+  const actuales = await prisma.painting.findMany({
+    where: { featured: true, deletedAt: null },
+    select: { id: true },
+  });
+
+  const esperados = new Set(actuales.map((obra) => obra.id));
+  const recibidos = new Set(orderedIds);
+  const coinciden =
+    esperados.size === recibidos.size &&
+    orderedIds.every((id) => esperados.has(id));
+
+  if (!coinciden) return;
+
+  await prisma.$transaction(
+    orderedIds.map((id, posicion) =>
+      prisma.painting.update({
+        where: { id },
+        data: { featuredPosition: posicion },
+      }),
+    ),
+  );
 
   refreshPublicViews();
 }

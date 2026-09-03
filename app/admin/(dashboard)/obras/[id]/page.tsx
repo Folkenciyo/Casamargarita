@@ -96,6 +96,7 @@ export default async function EditPaintingPage({
           width: image.width,
           height: image.height,
           isPrimary: image.isPrimary,
+          isDetail: image.isDetail,
           alt: image.alt,
         }))}
       />

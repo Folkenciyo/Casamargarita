@@ -82,7 +82,7 @@ export const obraDestacada = cacheado(
   async (mostrarVendidas: boolean) => {
     return prisma.painting.findMany({
       where: { ...visiblePaintingFilter(mostrarVendidas), featured: true },
-      orderBy: { position: "asc" },
+      orderBy: { featuredPosition: "asc" },
       take: 7,
       select: CAMPOS_TARJETA,
     });

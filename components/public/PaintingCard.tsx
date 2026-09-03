@@ -62,11 +62,18 @@ export function PaintingCard({
           )}
         </div>
 
-        <h3 className="display mt-4 text-2xl">
-          {painting.title}
-          {painting.year ? (
-            <span className="text-[color:var(--color-ink-soft)] italic">
-              , {painting.year}
+        <h3 className="display mt-4 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-2xl">
+          <span>
+            {painting.title}
+            {painting.year ? (
+              <span className="text-[color:var(--color-ink-soft)] italic">
+                , {painting.year}
+              </span>
+            ) : null}
+          </span>
+          {painting.status === "SOLD" ? (
+            <span className="tabular self-center rounded-full bg-[color:var(--color-oil)] px-2.5 py-0.5 text-[0.6rem] font-sans tracking-[0.15em] text-[color:var(--color-canvas)] uppercase">
+              {t.estados.SOLD}
             </span>
           ) : null}
         </h3>

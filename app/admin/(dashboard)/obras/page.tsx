@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { DangerButton } from "@/components/admin/DangerButton";
+import { FeaturedOrder } from "@/components/admin/FeaturedOrder";
 import {
   movePainting,
   purgePainting,
@@ -57,7 +58,7 @@ export default async function AdminPaintingsPage({
   const where = paintingWhere(filters);
   const filtered = hasActiveFilters(filters);
 
-  const [total, paintings, enPapelera] = await Promise.all([
+  const [total, paintings, enPapelera, destacadas] = await Promise.all([
     prisma.painting.count({ where }),
     prisma.painting.findMany({
       where,
@@ -71,6 +72,15 @@ export default async function AdminPaintingsPage({
       },
     }),
     prisma.painting.count({ where: { deletedAt: { not: null } } }),
+    prisma.painting.findMany({
+      where: { featured: true, deletedAt: null },
+      orderBy: { featuredPosition: "asc" },
+      select: {
+        id: true,
+        title: true,
+        images: { where: { isPrimary: true }, take: 1, select: { basePath: true } },
+      },
+    }),
   ]);
 
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -113,6 +123,16 @@ export default async function AdminPaintingsPage({
           guardadas. Se borran solas a los {DIAS_EN_PAPELERA} días de tirarlas.
           Hasta entonces se pueden recuperar enteras.
         </p>
+      ) : null}
+
+      {!filters.papelera ? (
+        <FeaturedOrder
+          paintings={destacadas.map((obra) => ({
+            id: obra.id,
+            title: obra.title,
+            basePath: obra.images[0]?.basePath ?? null,
+          }))}
+        />
       ) : null}
 
       {/* GET a la propia ruta: los filtros quedan en la URL y se pueden

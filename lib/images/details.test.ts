@@ -5,6 +5,7 @@ import {
   canGenerateDetails,
   detailCaption,
   detailCrops,
+  randomDetailCrop,
 } from "./details";
 
 describe("canGenerateDetails", () => {
@@ -71,6 +72,58 @@ describe("detailCrops", () => {
       expect(Number.isInteger(crop.width)).toBe(true);
       expect(Number.isInteger(crop.height)).toBe(true);
     }
+  });
+});
+
+describe("randomDetailCrop", () => {
+  const casos: [number, number][] = [
+    [4000, 3000],
+    [3000, 4000],
+    [2000, 2000],
+    [6000, 2100],
+  ];
+
+  it("no se sale de la imagen en ninguna proporción", () => {
+    for (const [width, height] of casos) {
+      // Varios `rng` fijos, no solo los extremos: un desliz en el cálculo
+      // de `maxLeft`/`maxTop` podría no notarse en 0 ni en 1.
+      for (const valor of [0, 0.25, 0.5, 0.75, 0.999]) {
+        const crop = randomDetailCrop(width, height, () => valor);
+        expect(crop.left).toBeGreaterThanOrEqual(0);
+        expect(crop.top).toBeGreaterThanOrEqual(0);
+        expect(crop.left + crop.width).toBeLessThanOrEqual(width);
+        expect(crop.top + crop.height).toBeLessThanOrEqual(height);
+      }
+    }
+  });
+
+  it("recorta en cuadrado, del mismo tamaño que detailCrops", () => {
+    const [width, height] = [4000, 3000];
+    const esperado = detailCrops(width, height)[0]!;
+    const crop = randomDetailCrop(width, height, () => 0.5);
+    expect(crop.width).toBe(crop.height);
+    expect(crop.width).toBe(esperado.width);
+  });
+
+  it("es determinista para un mismo rng, y distinto para otro", () => {
+    const a = randomDetailCrop(4000, 3000, () => 0.2);
+    const b = randomDetailCrop(4000, 3000, () => 0.2);
+    const c = randomDetailCrop(4000, 3000, () => 0.8);
+    expect(a).toEqual(b);
+    expect(a).not.toEqual(c);
+  });
+
+  it("en los extremos del rng toca los bordes de la imagen", () => {
+    const [width, height] = [4000, 3000];
+    const side = detailCrops(width, height)[0]!.width;
+
+    const esquina = randomDetailCrop(width, height, () => 0);
+    expect(esquina.left).toBe(0);
+    expect(esquina.top).toBe(0);
+
+    const opuesta = randomDetailCrop(width, height, () => 1);
+    expect(opuesta.left).toBe(width - side);
+    expect(opuesta.top).toBe(height - side);
   });
 });
 

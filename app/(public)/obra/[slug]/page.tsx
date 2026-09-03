@@ -35,9 +35,11 @@ export async function generateMetadata({
     openGraph: {
       type: "article",
       title: painting.title,
+      // Sin foto: se omite la clave, no un array vacío, para que herede la
+      // imagen de marca en vez de anunciar "sin imagen".
       images: cover
         ? [imageUrl(cover.basePath, cover.widths.at(-1) ?? 800, "webp")]
-        : [],
+        : undefined,
     },
   };
 }
