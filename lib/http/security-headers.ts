@@ -30,6 +30,10 @@ export function contentSecurityPolicy({
     // Con 'strict-dynamic' los scripts que cargue uno ya autorizado heredan
     // el permiso: es lo que permite que el arranque de Next no lleve lista.
     "'strict-dynamic'",
+    // El PDF del certificado maqueta con yoga-layout, que trae su binario
+    // WASM embebido y lo instancia con WebAssembly.instantiate. Sin este
+    // permiso, la CSP lo bloquea y "Descargar PDF" falla en silencio.
+    "'wasm-unsafe-eval'",
     isDevelopment ? "'unsafe-eval'" : "",
   ].filter(Boolean);
 
