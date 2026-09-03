@@ -66,6 +66,31 @@ export function detailCrops(width: number, height: number): DetailCrop[] {
   }));
 }
 
+/**
+ * Un recorte alternativo, en una zona al azar en vez de una de las tres fijas.
+ *
+ * Para cuando una de las tres no convence: en vez de repetir siempre la misma
+ * zona (que podría volver a caer en el mismo trozo de lienzo vacío), se prueba
+ * en otra parte de la imagen. `rng` es inyectable para poder probarlo con un
+ * valor fijo.
+ */
+export function randomDetailCrop(
+  width: number,
+  height: number,
+  rng: () => number = Math.random,
+): DetailCrop {
+  const side = Math.round(Math.min(width, height) * DETAIL_FRACTION);
+  const maxLeft = Math.max(0, width - side);
+  const maxTop = Math.max(0, height - side);
+
+  return {
+    left: Math.round(rng() * maxLeft),
+    top: Math.round(rng() * maxTop),
+    width: Math.min(side, width),
+    height: Math.min(side, height),
+  };
+}
+
 /** Pie de foto de cada detalle, en el orden en que se generan. */
 export function detailCaption(index: number): string {
   const nombres = ["Detalle de la pincelada", "Detalle del empaste", "Detalle de la materia"];

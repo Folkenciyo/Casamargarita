@@ -26,7 +26,13 @@ export async function generateMetadata({
     description:
       resultado.serie.description ||
       `Serie de ${resultado.paintings.length} obras al óleo.`,
-    openGraph: { type: "article", title: resultado.serie.title },
+    // Explícita y no heredada: un `openGraph` de página sin `images` puede
+    // pisar el de la capa raíz en vez de completarlo.
+    openGraph: {
+      type: "article",
+      title: resultado.serie.title,
+      images: ["/opengraph-image"],
+    },
   };
 }
 

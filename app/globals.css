@@ -91,6 +91,19 @@ body {
   }
 }
 
+/* Barra de "procesando" tras el 100% de la subida: no hay más bytes que
+   contar, así que se anima sola para no parecer colgada mientras sharp
+   genera las variantes en el servidor. */
+@keyframes pulso-procesando {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 /* Sin animaciones para quien las ha desactivado en el sistema.
    La capa WebGL respeta esta misma señal en JS. */
 @media (prefers-reduced-motion: reduce) {

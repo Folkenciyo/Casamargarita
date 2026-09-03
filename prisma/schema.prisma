@@ -51,6 +51,9 @@ model Painting {
   featured    Boolean        @default(false)
   /// Orden manual en la galería
   position    Int            @default(0)
+  /// Orden manual solo entre las destacadas, independiente de `position`:
+  /// la portada puede querer un orden distinto al de la galería general.
+  featuredPosition Int       @default(0)
   /// Serie a la que pertenece. Opcional: hay obra suelta, y borrar una serie
   /// no puede llevarse las obras por delante (onDelete: SetNull).
   seriesId    String?
@@ -67,7 +70,7 @@ model Painting {
   updatedAt   DateTime       @updatedAt
 
   @@index([published, position])
-  @@index([featured])
+  @@index([featured, featuredPosition])
   @@index([seriesId, position])
   @@index([deletedAt])
 }
@@ -88,6 +91,10 @@ model Image {
   alt         String?
   isPrimary   Boolean  @default(false)
   position    Int      @default(0)
+  /// Recorte de detalle autogenerado desde la principal (ver
+  /// lib/images/details.ts), no una foto subida a mano: solo estas se
+  /// pueden volver a generar en otra zona.
+  isDetail    Boolean  @default(false)
   createdAt   DateTime @default(now())
 
   @@index([paintingId, position])

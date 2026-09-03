@@ -6,6 +6,7 @@ import {
   deleteImage,
   generatePaintingDetails,
   moveImage,
+  regenerateDetailImage,
   reorderImages,
   setPrimaryImage,
   updateImageAlt,
@@ -26,8 +27,23 @@ type ImageItem = {
   width: number;
   height: number;
   isPrimary: boolean;
+  isDetail: boolean;
   alt: string | null;
 };
+
+function BotonRegenerar() {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className="text-sm underline disabled:opacity-50"
+      aria-label="Recortar este detalle de nuevo, en otra zona de la principal"
+    >
+      {pending ? "Recortando…" : "Regenerar"}
+    </button>
+  );
+}
 
 function BotonDetalles() {
   const { pending } = useFormStatus();
@@ -223,11 +239,19 @@ export function ImageManager({
               </form>
             </div>
 
-            <form action={deleteImage.bind(null, image.id)}>
-              <button type="submit" className="text-sm text-red-700 underline">
-                Borrar
-              </button>
-            </form>
+            <div className="flex gap-3">
+              {image.isDetail ? (
+                <form action={regenerateDetailImage.bind(null, image.id)}>
+                  <BotonRegenerar />
+                </form>
+              ) : null}
+
+              <form action={deleteImage.bind(null, image.id)}>
+                <button type="submit" className="text-sm text-red-700 underline">
+                  Borrar
+                </button>
+              </form>
+            </div>
           </li>
         ))}
       </ul>
