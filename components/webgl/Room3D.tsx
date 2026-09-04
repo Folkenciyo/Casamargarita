@@ -33,6 +33,14 @@ const WALL_TILE_METERS = 2.2;
 const FLOOR_TILE_METERS = 1.4;
 
 /**
+ * Cuánto del HDRI de entorno reciben pared, suelo y marco — de 0 a 1, el
+ * valor por defecto de three.js es 1. Con el HDRI a intensidad completa el
+ * reflejo se comía la escena; se deja en la mitad, sin tocar las luces
+ * directas (los focos por obra siguen igual).
+ */
+const ROOM_ENV_INTENSITY = 0.4;
+
+/**
  * Sala virtual con three.js directo, sin react-three-fiber: la escena es
  * estática salvo la cámara, así que el reconciliador de React no aporta nada
  * y sí bastante peso.
@@ -68,7 +76,10 @@ export function Room3D({ paintings }: { paintings: RoomPainting[] }) {
     if (!mount) return;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color("#e7e0d3");
+    // Negro y no el crema de antes: por encima de las paredes no hay techo,
+    // y ese hueco se veía gris. `background` es solo el telón de fondo — no
+    // toca `environment`, que es lo que ilumina de verdad la escena.
+    scene.background = new THREE.Color(0x000000);
 
     const camera = new THREE.PerspectiveCamera(
       45,
@@ -101,7 +112,7 @@ export function Room3D({ paintings }: { paintings: RoomPainting[] }) {
     // Sin esto, un entorno HDR de verdad quema de blanco los materiales
     // claros (la pared, el marco): sale plano, no como una sala iluminada.
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 0.85;
+    renderer.toneMappingExposure = 0.5;
     mount.appendChild(renderer.domElement);
 
     // Texturas y su limpieza al desmontar: nada se libera solo.
@@ -168,6 +179,7 @@ export function Room3D({ paintings }: { paintings: RoomPainting[] }) {
       map: loadMap(WALL_TEXTURE, "color", wallW / WALL_TILE_METERS, wallH / WALL_TILE_METERS),
       normalMap: loadMap(WALL_TEXTURE, "normal", wallW / WALL_TILE_METERS, wallH / WALL_TILE_METERS),
       roughnessMap: loadMap(WALL_TEXTURE, "roughness", wallW / WALL_TILE_METERS, wallH / WALL_TILE_METERS),
+      envMapIntensity: ROOM_ENV_INTENSITY,
     });
     const backWall = new THREE.Mesh(
       new THREE.PlaneGeometry(wallW, wallH),
@@ -184,15 +196,19 @@ export function Room3D({ paintings }: { paintings: RoomPainting[] }) {
         map: loadMap(FLOOR_TEXTURE, "color", floorW / FLOOR_TILE_METERS, floorD / FLOOR_TILE_METERS),
         normalMap: loadMap(FLOOR_TEXTURE, "normal", floorW / FLOOR_TILE_METERS, floorD / FLOOR_TILE_METERS),
         roughnessMap: loadMap(FLOOR_TEXTURE, "roughness", floorW / FLOOR_TILE_METERS, floorD / FLOOR_TILE_METERS),
+        envMapIntensity: ROOM_ENV_INTENSITY,
       }),
     );
     floor.rotation.x = -Math.PI / 2;
     floor.position.z = 7;
     scene.add(floor);
 
+    // Misma altura y mismo centrado vertical que la del fondo (wallH, no
+    // WALL_HEIGHT): con la textura puesta, un salto de altura entre la
+    // pared de frente y las laterales se nota mucho más que con color liso.
     for (const side of [-1, 1]) {
       const wall = new THREE.Mesh(
-        new THREE.PlaneGeometry(14, WALL_HEIGHT),
+        new THREE.PlaneGeometry(14, wallH),
         wallMaterial,
       );
       wall.rotation.y = (-side * Math.PI) / 2;
@@ -204,7 +220,7 @@ export function Room3D({ paintings }: { paintings: RoomPainting[] }) {
     // todo ella sola: con `scene.environment` puesto, la misma intensidad
     // quemaba de blanco la pared clara. Se baja a lo que hace falta para que
     // la textura de la pared se siga viendo, no solo el brillo.
-    scene.add(new THREE.AmbientLight("#ffffff", 0.5));
+    scene.add(new THREE.AmbientLight("#ffffff", 0.3));
     const fill = new THREE.DirectionalLight("#fff6e8", 0.6);
     fill.position.set(0, 6, 8);
     scene.add(fill);
@@ -216,6 +232,7 @@ export function Room3D({ paintings }: { paintings: RoomPainting[] }) {
       map: loadMap(FRAME_TEXTURE, "color", 1, 1),
       normalMap: loadMap(FRAME_TEXTURE, "normal", 1, 1),
       roughnessMap: loadMap(FRAME_TEXTURE, "roughness", 1, 1),
+      envMapIntensity: ROOM_ENV_INTENSITY,
     });
     const indexOfMesh = new Map<THREE.Object3D, number>();
 
