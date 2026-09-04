@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { EXRLoader } from "three/examples/jsm/loaders/EXRLoader.js";
 import {
   EYE_LEVEL,
   WALL_HEIGHT,
@@ -16,6 +17,20 @@ const FRAME_BORDER = 0.05;
 /** Ancho de pared que se ve al entrar, antes de fijarse en ninguna obra. */
 const FRAMED_WIDTH = 6;
 const FLIGHT_MS = 900;
+
+/**
+ * Texturas PBR (color + normal + rugosidad) de pared, suelo y marco.
+ * Los `.webp` los genera `scripts/build-room-textures.ts` a partir de los
+ * originales CC0 en las mismas carpetas — no se suben a mano.
+ */
+const WALL_TEXTURE = "/Sala/pared";
+const FLOOR_TEXTURE = "/Sala/suelo";
+const FRAME_TEXTURE = "/Sala/madera";
+const ROOM_HDRI = "/Sala/church-museum-1k.exr";
+
+/** Cada cuántos metros se repite la textura, para que no salga estirada. */
+const WALL_TILE_METERS = 2.2;
+const FLOOR_TILE_METERS = 1.4;
 
 /**
  * Sala virtual con three.js directo, sin react-three-fiber: la escena es
@@ -83,7 +98,50 @@ export function Room3D({ paintings }: { paintings: RoomPainting[] }) {
     }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(mount.clientWidth, mount.clientHeight);
+    // Sin esto, un entorno HDR de verdad quema de blanco los materiales
+    // claros (la pared, el marco): sale plano, no como una sala iluminada.
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 0.85;
     mount.appendChild(renderer.domElement);
+
+    // Texturas y su limpieza al desmontar: nada se libera solo.
+    const textureLoader = new THREE.TextureLoader();
+    const disposables: Array<{ dispose: () => void }> = [];
+
+    /** Un mapa PBR, repetido para que no salga estirado sobre la superficie. */
+    function loadMap(
+      base: string,
+      kind: "color" | "normal" | "roughness",
+      repeatX: number,
+      repeatY: number,
+    ): THREE.Texture {
+      const texture = textureLoader.load(`${base}/${kind}.webp`, () =>
+        renderer.render(scene, camera),
+      );
+      texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+      texture.repeat.set(repeatX, repeatY);
+      // Solo el color es una foto; normal y rugosidad son datos, no color,
+      // y marcarlos sRGB desvirtúa lo que cuentan.
+      if (kind === "color") texture.colorSpace = THREE.SRGBColorSpace;
+      texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      disposables.push(texture);
+      return texture;
+    }
+
+    // Luz de entorno: un HDRI real de interior de museo, convertido a mapa de
+    // reflejo/irradiancia. En cuanto llega, todo material PBR de la escena
+    // —pared, suelo, marcos, hasta el lienzo de cada obra— la recibe solo con
+    // poner `scene.environment`, sin tocarlos uno a uno.
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    pmrem.compileEquirectangularShader();
+    new EXRLoader().load(ROOM_HDRI, (hdri) => {
+      const envMap = pmrem.fromEquirectangular(hdri).texture;
+      scene.environment = envMap;
+      disposables.push(envMap);
+      hdri.dispose();
+      pmrem.dispose();
+      renderer.render(scene, camera);
+    });
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.target.set(0, EYE_LEVEL, 0);
@@ -100,22 +158,33 @@ export function Room3D({ paintings }: { paintings: RoomPainting[] }) {
     controls.maxAzimuthAngle = Math.PI / 3;
 
     // Sala: pared del fondo, suelo y dos laterales insinuados. Geometría más
-    // ancha que el encuadre para que no asome el fondo por las esquinas.
+    // ancha que el encuadre para que no asome el fondo por las esquinas. El
+    // reparto de repeticiones sale de esa misma geometría, no del ancho
+    // visible, para que la densidad de la pared no cambie entre el trozo que
+    // se ve de frente y el que se insinúa en los bordes.
+    const wallW = wallWidth + 30;
+    const wallH = WALL_HEIGHT + 8;
     const wallMaterial = new THREE.MeshStandardMaterial({
-      color: "#efe9dd",
-      roughness: 0.95,
-      metalness: 0,
+      map: loadMap(WALL_TEXTURE, "color", wallW / WALL_TILE_METERS, wallH / WALL_TILE_METERS),
+      normalMap: loadMap(WALL_TEXTURE, "normal", wallW / WALL_TILE_METERS, wallH / WALL_TILE_METERS),
+      roughnessMap: loadMap(WALL_TEXTURE, "roughness", wallW / WALL_TILE_METERS, wallH / WALL_TILE_METERS),
     });
     const backWall = new THREE.Mesh(
-      new THREE.PlaneGeometry(wallWidth + 30, WALL_HEIGHT + 8),
+      new THREE.PlaneGeometry(wallW, wallH),
       wallMaterial,
     );
     backWall.position.set(0, WALL_HEIGHT / 2, 0);
     scene.add(backWall);
 
+    const floorW = wallWidth + 30;
+    const floorD = 40;
     const floor = new THREE.Mesh(
-      new THREE.PlaneGeometry(wallWidth + 30, 40),
-      new THREE.MeshStandardMaterial({ color: "#d8d0c0", roughness: 1 }),
+      new THREE.PlaneGeometry(floorW, floorD),
+      new THREE.MeshStandardMaterial({
+        map: loadMap(FLOOR_TEXTURE, "color", floorW / FLOOR_TILE_METERS, floorD / FLOOR_TILE_METERS),
+        normalMap: loadMap(FLOOR_TEXTURE, "normal", floorW / FLOOR_TILE_METERS, floorD / FLOOR_TILE_METERS),
+        roughnessMap: loadMap(FLOOR_TEXTURE, "roughness", floorW / FLOOR_TILE_METERS, floorD / FLOOR_TILE_METERS),
+      }),
     );
     floor.rotation.x = -Math.PI / 2;
     floor.position.z = 7;
@@ -131,18 +200,27 @@ export function Room3D({ paintings }: { paintings: RoomPainting[] }) {
       scene.add(wall);
     }
 
-    scene.add(new THREE.AmbientLight("#ffffff", 1.1));
+    // Antes de que hubiera un HDRI de entorno, esta luz tenía que hacerlo
+    // todo ella sola: con `scene.environment` puesto, la misma intensidad
+    // quemaba de blanco la pared clara. Se baja a lo que hace falta para que
+    // la textura de la pared se siga viendo, no solo el brillo.
+    scene.add(new THREE.AmbientLight("#ffffff", 0.5));
     const fill = new THREE.DirectionalLight("#fff6e8", 0.6);
     fill.position.set(0, 6, 8);
     scene.add(fill);
 
-    // Un foco por obra, como en una sala de exposición.
-    const loader = new THREE.TextureLoader();
-    const disposables: Array<{ dispose: () => void }> = [];
+    // Un foco por obra, como en una sala de exposición. Un solo material de
+    // madera para todos los marcos: cambia el tamaño de la caja, no el
+    // material, así que no hace falta cargar la textura una vez por obra.
+    const frameMaterial = new THREE.MeshStandardMaterial({
+      map: loadMap(FRAME_TEXTURE, "color", 1, 1),
+      normalMap: loadMap(FRAME_TEXTURE, "normal", 1, 1),
+      roughnessMap: loadMap(FRAME_TEXTURE, "roughness", 1, 1),
+    });
     const indexOfMesh = new Map<THREE.Object3D, number>();
 
     hung.forEach((painting, index) => {
-      const texture = loader.load(painting.textureUrl, () => {
+      const texture = textureLoader.load(painting.textureUrl, () => {
         renderer.render(scene, camera);
       });
       texture.colorSpace = THREE.SRGBColorSpace;
@@ -155,7 +233,7 @@ export function Room3D({ paintings }: { paintings: RoomPainting[] }) {
           painting.height + FRAME_BORDER * 2,
           FRAME_DEPTH,
         ),
-        new THREE.MeshStandardMaterial({ color: "#2b2622", roughness: 0.7 }),
+        frameMaterial,
       );
       frame.position.set(painting.x, painting.y, FRAME_DEPTH / 2);
       scene.add(frame);

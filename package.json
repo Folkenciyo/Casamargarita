@@ -15,6 +15,7 @@
     "e2e": "playwright test",
     "hash-password": "node --experimental-strip-types scripts/hash-password.ts",
     "build:daisies": "node --experimental-strip-types scripts/build-daisy-textures.ts",
+    "build:room-textures": "node --experimental-strip-types scripts/build-room-textures.ts",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
