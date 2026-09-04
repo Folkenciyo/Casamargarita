@@ -94,6 +94,13 @@ castellano, con sus tildes.
   solo genera mipmaps así, y sin mipmaps la flor lejana hierve de aliasing y no
   hay desenfoque de profundidad. Se generan con `pnpm build:daisies` a partir de
   los PNG originales; no sustituyas el `.webp` a mano.
+- **Las texturas PBR de la sala 3D (`public/Sala/`) llevan un HDRI de
+  entorno de verdad.** Desde que `Room3D.tsx` pone `scene.environment`, las
+  intensidades de luz de antes (pensadas para una escena sin luz de entorno)
+  queman de blanco los materiales claros — la pared se quedaba sin textura
+  visible hasta bajar el `AmbientLight`. Se generan con
+  `pnpm build:room-textures` a partir de los originales en las mismas
+  carpetas; no sustituyas el `.webp` a mano, igual que las margaritas.
 - **Si añades un `<script>` inline, pásale `scriptNonce()`.** Con la CSP
   activa, sin nonce el navegador lo bloquea.
 - **De un fichero con `"use server"` solo se exportan funciones async.** Una
