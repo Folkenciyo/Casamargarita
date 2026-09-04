@@ -49,3 +49,26 @@ export function hangPaintings(paintings: RoomPainting[]): {
 
   return { hung, wallWidth: Math.max(total + SIDE_MARGIN * 2, 8) };
 }
+
+export type RoomSection = {
+  id: string;
+  slug: string;
+  title: string;
+  paintings: RoomPainting[];
+};
+
+export type Room = {
+  id: string;
+  slug: string;
+  title: string;
+  hung: HungPainting[];
+  wallWidth: number;
+};
+
+/** Precalcula la geometría de cada sección: una sala 3D lista para montar. */
+export function buildRooms(sections: RoomSection[]): Room[] {
+  return sections.map((section) => {
+    const { hung, wallWidth } = hangPaintings(section.paintings);
+    return { id: section.id, slug: section.slug, title: section.title, hung, wallWidth };
+  });
+}

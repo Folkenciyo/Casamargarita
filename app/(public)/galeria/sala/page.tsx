@@ -3,7 +3,7 @@ import Link from "next/link";
 import { RoomGate } from "@/components/webgl/RoomGate";
 import { formatPrice } from "@/lib/catalog";
 import { imageUrl } from "@/lib/images/urls";
-import { obrasSala } from "@/lib/public/queries";
+import { obrasSalaPorSecciones } from "@/lib/public/queries";
 import { ajustesPublicos } from "@/lib/settings";
 import { STATUS_LABELS } from "@/lib/validation/painting";
 
@@ -21,30 +21,41 @@ export const metadata: Metadata = {
   robots: { index: false },
 };
 
-export default async function RoomPage() {
+export default async function RoomPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ serie?: string }>;
+}) {
   const { showSoldPaintings } = await ajustesPublicos();
-  const paintings = await obrasSala(showSoldPaintings);
+  const secciones = await obrasSalaPorSecciones(showSoldPaintings);
 
-  const hangable = paintings
-    .filter((painting) => painting.images.length > 0)
-    .map((painting) => {
-      const cover = painting.images[0]!;
-      return {
-        slug: painting.slug,
-        title: painting.title,
-        priceLabel:
-          painting.status === "SOLD" || painting.status === "NOT_FOR_SALE"
-            ? STATUS_LABELS[painting.status]
-            : formatPrice(painting.priceCents, painting.currency),
-        widthCm: painting.widthCm,
-        heightCm: painting.heightCm,
-        textureUrl: imageUrl(
-          cover.basePath,
-          cover.widths.includes(800) ? 800 : (cover.widths[0] ?? 400),
-          "webp",
-        ),
-      };
-    });
+  const sections = secciones
+    .map((seccion) => ({
+      id: seccion.id,
+      slug: seccion.slug,
+      title: seccion.title,
+      paintings: seccion.paintings
+        .filter((painting) => painting.images.length > 0)
+        .map((painting) => {
+          const cover = painting.images[0]!;
+          return {
+            slug: painting.slug,
+            title: painting.title,
+            priceLabel:
+              painting.status === "SOLD" || painting.status === "NOT_FOR_SALE"
+                ? STATUS_LABELS[painting.status]
+                : formatPrice(painting.priceCents, painting.currency),
+            widthCm: painting.widthCm,
+            heightCm: painting.heightCm,
+            textureUrl: imageUrl(
+              cover.basePath,
+              cover.widths.includes(800) ? 800 : (cover.widths[0] ?? 400),
+              "webp",
+            ),
+          };
+        }),
+    }))
+    .filter((seccion) => seccion.paintings.length > 0);
 
   return (
     <>
@@ -55,12 +66,12 @@ export default async function RoomPage() {
         </Link>
       </div>
 
-      {hangable.length === 0 ? (
+      {sections.length === 0 ? (
         <p className="text-[color:var(--color-ink-soft)]">
           La sala se llena con las obras que tengan foto. Todavía no hay ninguna.
         </p>
       ) : (
-        <RoomGate paintings={hangable} />
+        <RoomGate sections={sections} initialSlug={(await searchParams).serie} />
       )}
     </>
   );

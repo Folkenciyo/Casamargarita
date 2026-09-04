@@ -24,6 +24,23 @@ html {
   color-scheme: light;
 }
 
+/* Modo oscuro: el interruptor vive en la cabecera del sitio público
+   (`ThemeToggle`), que pone `data-theme="dark"` en `<html>`. Las variables
+   se redefinen solo dentro de `.public-shell` —el envoltorio de
+   `app/(public)/layout.tsx`— para que el panel de administración, que nunca
+   pasó por esto, no herede un tema a medias. */
+html[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+html[data-theme="dark"] .public-shell {
+  --color-canvas: #17140f;
+  --color-canvas-dim: #2a251d;
+  --color-ink: #f2ede4;
+  --color-ink-soft: #a89f8f;
+  --color-oil: #d9835a;
+}
+
 body {
   background-color: var(--color-canvas);
   color: var(--color-ink);

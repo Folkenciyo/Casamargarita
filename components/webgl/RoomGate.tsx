@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import type { RoomPainting } from "./room-layout";
+import type { RoomSection } from "./room-layout";
 import { Room3D } from "./Room3D";
 
 type Support = "checking" | "ok" | "small-screen" | "no-webgl" | "reduced-motion";
@@ -12,7 +12,13 @@ type Support = "checking" | "ok" | "small-screen" | "no-webgl" | "reduced-motion
  * three.js siquiera: la galería en 2D ya cuenta lo mismo y pesa cien veces
  * menos.
  */
-export function RoomGate({ paintings }: { paintings: RoomPainting[] }) {
+export function RoomGate({
+  sections,
+  initialSlug,
+}: {
+  sections: RoomSection[];
+  initialSlug?: string;
+}) {
   const [support, setSupport] = useState<Support>("checking");
 
   useEffect(() => {
@@ -29,7 +35,7 @@ export function RoomGate({ paintings }: { paintings: RoomPainting[] }) {
     setSupport(gl ? "ok" : "no-webgl");
   }, []);
 
-  if (support === "ok") return <Room3D paintings={paintings} />;
+  if (support === "ok") return <Room3D sections={sections} initialSlug={initialSlug} />;
   if (support === "checking") {
     return <div className="h-[70dvh] w-full animate-pulse rounded bg-[color:var(--color-canvas-dim)]" />;
   }
