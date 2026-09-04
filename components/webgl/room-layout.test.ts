@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EYE_LEVEL, hangPaintings, type RoomPainting } from "./room-layout";
+import { buildRooms, EYE_LEVEL, hangPaintings, type RoomPainting } from "./room-layout";
 
 function painting(widthCm: number, heightCm: number): RoomPainting {
   return {
@@ -46,5 +46,16 @@ describe("hangPaintings", () => {
     const { hung, wallWidth } = hangPaintings([]);
     expect(hung).toEqual([]);
     expect(wallWidth).toBeGreaterThan(0);
+  });
+});
+
+describe("buildRooms", () => {
+  it("conserva id/slug/título y delega la geometría en hangPaintings", () => {
+    const [room] = buildRooms([
+      { id: "s1", slug: "marinas", title: "Marinas", paintings: [painting(100, 81)] },
+    ]);
+    expect(room).toMatchObject({ id: "s1", slug: "marinas", title: "Marinas" });
+    expect(room!.hung[0]!.width).toBeCloseTo(1);
+    expect(room!.wallWidth).toBeGreaterThan(0);
   });
 });

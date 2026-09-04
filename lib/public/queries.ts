@@ -2,6 +2,7 @@ import { CACHE_TAGS, cacheado } from "@/lib/cache";
 import { enlaceAObra, visiblePaintingFilter } from "@/lib/catalog";
 import { prisma } from "@/lib/db";
 import { galeriaWhere, type FiltrosGaleria } from "@/lib/public/gallery-filters";
+import { agruparPorSeccion } from "@/lib/public/room-sections";
 
 /**
  * Las lecturas del sitio público, cacheadas por etiquetas.
@@ -157,25 +158,35 @@ export const obraPublica = cacheado(
   },
 );
 
-/** Las obras que cuelga la sala en tres dimensiones. */
-export const obrasSala = cacheado(
-  "obras-sala",
-  [CACHE_TAGS.paintings],
+/** Las obras que cuelga la sala en tres dimensiones, agrupadas por serie. */
+export const obrasSalaPorSecciones = cacheado(
+  "obras-sala-secciones",
+  [CACHE_TAGS.paintings, CACHE_TAGS.series],
   async (mostrarVendidas: boolean) => {
-    return prisma.painting.findMany({
-      where: visiblePaintingFilter(mostrarVendidas),
-      orderBy: { position: "asc" },
-      select: {
-        slug: true,
-        title: true,
-        status: true,
-        priceCents: true,
-        currency: true,
-        widthCm: true,
-        heightCm: true,
-        images: { where: { isPrimary: true }, take: 1, select: CAMPOS_IMAGEN },
-      },
-    });
+    const [paintings, series] = await Promise.all([
+      prisma.painting.findMany({
+        where: visiblePaintingFilter(mostrarVendidas),
+        orderBy: { position: "asc" },
+        select: {
+          slug: true,
+          title: true,
+          status: true,
+          priceCents: true,
+          currency: true,
+          widthCm: true,
+          heightCm: true,
+          images: { where: { isPrimary: true }, take: 1, select: CAMPOS_IMAGEN },
+          series: { select: { id: true, slug: true, title: true, published: true } },
+        },
+      }),
+      prisma.series.findMany({
+        where: { published: true },
+        orderBy: { position: "asc" },
+        select: { id: true, slug: true, title: true },
+      }),
+    ]);
+
+    return agruparPorSeccion(paintings, series);
   },
 );
 

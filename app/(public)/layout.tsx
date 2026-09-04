@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { LanguageSwitch } from "@/components/public/LanguageSwitch";
+import { ThemeToggle } from "@/components/public/ThemeToggle";
 import { DaisyField } from "@/components/webgl/DaisyField";
 import { OilTransitions } from "@/components/webgl/OilTransitions";
 import { cabeceraPublica } from "@/lib/public/queries";
@@ -16,7 +17,7 @@ export default async function PublicLayout({
   const hayDiario = artist.hayDiario;
 
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div className="public-shell flex min-h-dvh flex-col bg-[color:var(--color-canvas)] text-[color:var(--color-ink)]">
       <DaisyField />
       <OilTransitions />
       <header className="border-b border-[color:var(--color-canvas-dim)]">
@@ -66,6 +67,7 @@ export default async function PublicLayout({
               Buscar
             </Link>
             <LanguageSwitch />
+            <ThemeToggle />
           </div>
         </nav>
       </header>

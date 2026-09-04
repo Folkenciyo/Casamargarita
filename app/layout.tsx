@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import { Cormorant_Garamond, Inter } from "next/font/google";
+import { scriptNonce } from "@/lib/http/nonce";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/site";
 import "./globals.css";
 
@@ -69,11 +70,31 @@ export default async function RootLayout({
   // El idioma del documento sale de la ruta, que el middleware deja en una
   // cabecera. Sin esto, las páginas en inglés se anunciarían como españolas a
   // los lectores de pantalla y a los buscadores.
-  const pathname = (await headers()).get("x-pathname") ?? "/";
+  const [pathname, nonce] = await Promise.all([
+    headers().then((h) => h.get("x-pathname") ?? "/"),
+    scriptNonce(),
+  ]);
   const lang = pathname.startsWith("/en") ? "en" : "es";
 
   return (
     <html lang={lang} className={`${display.variable} ${sans.variable}`}>
+      <head>
+        {/* Pone el tema guardado antes de pintar nada: sin esto, quien
+            eligió oscuro vería un parpadeo claro en cada carga. No toca la
+            sala 3D directamente —Room3D lee `data-theme` al montarse—. */}
+        {/* suppressHydrationWarning: el navegador borra el nonce real del
+            DOM en cuanto lo usa (para que no se pueda leer y reutilizar) —
+            React ve un valor distinto al que puso el servidor y avisa de un
+            desajuste que no es tal. */}
+        <script
+          nonce={nonce}
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{
+            __html:
+              'try{if(localStorage.getItem("theme")==="dark"){document.documentElement.dataset.theme="dark";document.documentElement.style.colorScheme="dark"}}catch(e){}',
+          }}
+        />
+      </head>
       <body>{children}</body>
     </html>
   );

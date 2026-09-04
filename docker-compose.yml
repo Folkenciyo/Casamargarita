@@ -16,6 +16,10 @@ services:
       DATABASE_URL: postgresql://art:art@postgres:5432/casamargarita?schema=public
       UPLOADS_DIR: /app/uploads
       WATCHPACK_POLLING: "true"
+      # Deja que `pnpm seed:demo` vacíe el caché de datos al terminar: siembra
+      # con Prisma, se salta el panel y sin esto la web no vería lo sembrado.
+      # En producción no se define, y así la ruta responde 404.
+      REVALIDATE_SECRET: desarrollo-revalidate
     volumes:
       - .:/app
       - node_modules:/app/node_modules
