@@ -14,6 +14,16 @@ export type OilUniforms = {
   reveal: 0 | 1;
   /** Segundos desde que arrancó la capa; mueve la veta del óleo. */
   time: number;
+  /**
+   * Proporción que se le hace creer al shader, cuando no interesa la real
+   * del canvas. Solo la usa la barra de carga de la sala: su lienzo es unas
+   * diez veces más ancho que alto, y con esa proporción de verdad el barrido
+   * se queda muy corto —el frente del trazo recorre como mucho hasta 1,52 y
+   * el campo del shader llega a 3, así que el último tercio no se pintaría
+   * nunca—. Dándole una proporción de pantalla, el trazo cruza entero y de
+   * paso se estira, que es justo lo que hace una brocha arrastrada.
+   */
+  aspect?: number;
 };
 
 // El óleo de la casa y su sombra. Dos tonos y no uno: un color plano a
@@ -124,7 +134,7 @@ export function createOilRenderer(canvas: HTMLCanvasElement): OilRenderer | null
       gl.uniform1f(uniforms.time, values.time);
       gl.uniform1f(
         uniforms.aspect,
-        canvas.width / Math.max(canvas.height, 1),
+        values.aspect ?? canvas.width / Math.max(canvas.height, 1),
       );
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     },

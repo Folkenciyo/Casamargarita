@@ -16,15 +16,15 @@ nuevos: las paredes siguen con su textura de museo, y el plano de las salas
 de algunas cosas del edificio. Hay que pedírselos cuando se retome esto; no
 inventar el plano sin ellos.
 
-## Modo nocturno
+## Modo nocturno — hecho
 
-Una segunda ambientación: cielo oscuro con estrellas, los apliques como
-única fuente de luz sobre los cuadros. Reutiliza lo que ya existe (el HDRI
-como `environment`/`background`, los apliques con su `RectAreaLight`) — el
-HDRI nocturno ya está en el proyecto, sin usar todavía:
-`public/Sala/night-sky-1k.exr`. Falta el propio interruptor día/noche —
-un botón o similar que cambie `ROOM_HDRI` en caliente— y decidir si también
-hay que apagar u oscurecer las luces de los apliques a la vez.
+Cielo oscuro y los apliques como luz principal sobre los cuadros. No lleva
+interruptor propio: lo manda el de claro/oscuro del sitio (`ThemeToggle`),
+que lanza un evento `theme-change`; `Room3D.tsx` lo escucha, cambia el HDRI
+a `night-sky-1k.exr` y baja a la vez las luces de relleno (`FILL_BY_THEME`)
+—sin eso la sala no llegaba a verse de noche por mucho que cambiara el
+cielo—. Un botón propio de la sala se descartó: quien nunca lo toca no
+llegaría a verlo.
 
 ## Pájaros en bandada, muy lejanos
 
@@ -154,10 +154,45 @@ Generar un modelo 3D a partir de la imagen de cada obra y mostrarlo como
 escultura en la sala. Marcado explícitamente como algo para fases
 avanzadas — no es para las próximas sesiones.
 
-## Rendimiento
+## Rendimiento — hecho en parte
 
-Cuando se aborde, hacerlo con Opus — decisión ya tomada por el usuario, no
-es una tarea de código en sí sino una nota de con qué modelo abordarla.
+La entrada ya no se lleva la espera por delante. La sala no se monta al
+abrir la página sino al pulsar «Entrar en la sala», y hasta ese clic no se
+descarga nada —ni three.js siquiera: `RoomGate` pide el módulo con
+`next/dynamic`, y lo adelanta al pasar el ratón por el botón—. El montaje
+va por fases que devuelven el hilo al navegador entre una y otra, con la
+espera contada por `RoomLoader` (el mismo shader de óleo de las
+transiciones, con el progreso real de la carga en vez del tiempo), y los
+shaders se compilan con `compileAsync` antes de destapar la sala, para que
+ese tirón no caiga justo después de quitar la pantalla de carga.
+
+Ojo con el gestor de carga de three al tocar esto: su `onLoad` no significa
+«ya está todo», sino «ahora mismo no queda nada en la cola», y lo dispara
+cada vez que eso pasa —entre fase y fase, de sobra—. Por eso lo que se
+espera es `colaVacia` cuando ya no queda nada por pedir, no el aviso suelto.
+
+Los cielos ya no son un `.exr` en tiempo de ejecución. Se descubrió que a
+ese fichero se le pedían dos cosas que no necesitan lo mismo, y ahora van
+por separado (`pnpm build:sky`, `SKY_BY_THEME` en `Room3D.tsx`):
+
+- `day-sky.webp` / `night-sky.webp` — el cielo que se ve. Quiere resolución,
+  no rango dinámico. 17 y 33 kB. Va directo a `scene.background`, sin pasar
+  por el PMREM: antes el fondo era el propio cubo de reflejos, o sea el
+  cielo ya desenfocado, así que además se ve mejor que antes.
+- `day-env.bin` / `night-env.bin` — la luz. Quiere el rango entero (el sol
+  vale mucho más que 1) pero no resolución, porque el PMREM la difumina de
+  todas formas: 256×128 en media precisión, 257 kB. El `PMREMGenerator`
+  monta su cubo con un lado de un cuarto del ancho que le den, de ahí el 256.
+
+De 1,1 MB a 274 kB el de día, de 1,7 MB a 290 kB el de noche, y se acabaron
+los 160–190 ms de descompresión PIZ con la sala parada. El `EXRLoader` ya no
+se importa, así que tampoco viaja en el paquete.
+
+**Queda pendiente**: sobran unos 7 MB en `public/Sala` que no referencia
+nadie —`church-museum-1k.exr` (5,6 MB) y `meadow-1k.exr` (1,5 MB, el cielo
+anterior)—. Los `*-sky-1k.exr` sí se conservan: son la fuente de
+`pnpm build:sky`, como los `.png` originales lo son de las texturas. Nada de
+esto lo descarga el navegador, pero viaja en la imagen de Docker.
 
 ## Sonido ambiente (propuesta sin decidir)
 

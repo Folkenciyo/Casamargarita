@@ -111,6 +111,26 @@ const FOLIAGE_FAR_ACCEPT_CHANCE = 0.12;
 const TREE_MODEL = "/Sala/arbol/tree.fbx";
 const TREE_TRUNK_TEXTURE = "/Sala/arbol/trunk";
 const TREE_FOLIAGE_TEXTURE = "/Sala/arbol/foliage";
+
+/**
+ * Dentro del `.fbx` siguen escritos los nombres que su autor le puso a las
+ * texturas (`Peppertree_..._Color_png_Tex.png`, `BrPepper_Trunk_...`), y el
+ * cargador de three intenta traerlas de `/Sala/arbol/` sin preguntar. Ahí no
+ * están —las nuestras son los `.webp` convertidos— y, aunque estuvieran,
+ * `buildCornerTrees` tira los materiales del modelo nada más cargarlo para
+ * poner los suyos. Eran cuatro 404 en cada entrada a la sala, por nada.
+ *
+ * `interceptarTexturasDelArbol` las sustituye por un píxel transparente ya en
+ * memoria: el cargador recibe su imagen, no sale ninguna petición y el gestor
+ * de carga sigue contando el fichero como cualquier otro.
+ */
+const PIXEL_TRANSPARENTE =
+  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+
+export function interceptarTexturasDelArbol(url: string): string {
+  const esTexturaDeFabrica = url.startsWith("/Sala/arbol/") && url.endsWith("_Tex.png");
+  return esTexturaDeFabrica ? PIXEL_TRANSPARENTE : url;
+}
 /** Ligero margen sobre el suelo: la base del modelo original queda una pizca
  * por debajo de y=0. */
 const TREE_GROUND_OFFSET = 0.1;

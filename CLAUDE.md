@@ -101,6 +101,16 @@ castellano, con sus tildes.
   visible hasta bajar el `AmbientLight`. Se generan con
   `pnpm build:room-textures` a partir de los originales en las mismas
   carpetas; no sustituyas el `.webp` a mano, igual que las margaritas.
+- **El cielo de la sala son dos ficheros, no uno.** `*-sky.webp` es lo que se
+  ve (quiere resolución, no rango dinámico) y `*-env.bin` es la luz de
+  entorno (quiere el rango entero, pero no resolución: el `PMREMGenerator` la
+  difumina igual, y monta su cubo con un lado de un cuarto del ancho que le
+  den). Salen del `.exr` con `pnpm build:sky`; no los sustituyas a mano, igual
+  que las margaritas y las texturas de la sala. Juntos pesan la cuarta parte
+  que el `.exr` y ahorran los 160–190 ms que costaba descomprimir PIZ en el
+  hilo principal. El webp se genera **sin** curva de exposición —solo lineal a
+  sRGB—: el tono se lo da el `ACESFilmicToneMapping` del renderer, y aplicarla
+  también al generarlo dejaría el cielo con la exposición puesta dos veces.
 - **Si añades un `<script>` inline, pásale `scriptNonce()`.** Con la CSP
   activa, sin nonce el navegador lo bloquea.
 - **De un fichero con `"use server"` solo se exportan funciones async.** Una

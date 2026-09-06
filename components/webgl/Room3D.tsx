@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { EXRLoader } from "three/examples/jsm/loaders/EXRLoader.js";
 import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
 import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLightUniformsLib.js";
 import {
@@ -16,6 +15,7 @@ import {
   buildRoomLabel,
   buildRoomPaintings,
   createRoomMaterials,
+  interceptarTexturasDelArbol,
 } from "./build-room";
 import {
   facingSign,
@@ -29,6 +29,7 @@ import {
   type Placement,
 } from "./floor-plan";
 import { buildRooms, EYE_LEVEL, WALL_HEIGHT, type RoomSection } from "./room-layout";
+import type { RoomLoadPhaseId } from "./room-loading";
 
 // Los apliques usan RectAreaLight —una luz con forma, no un punto— para que
 // un cuadro ancho quede iluminado de un borde a otro. Necesita esta tabla de
@@ -41,12 +42,21 @@ const FRAMED_WIDTH = 6;
 /** Acercamiento a una obra al hacer clic: un ajuste de encuadre corto, no
  * una forma de moverse por el museo —de eso se encarga WASD. */
 const FOCUS_MS = 400;
-/** Qué HDRI usar según el tema del sitio — el mismo interruptor claro/oscuro
+/**
+ * Qué cielo usar según el tema del sitio — el mismo interruptor claro/oscuro
  * de la cabecera, no un botón propio de la sala: quien nunca lo toca no
- * llega a verlo. */
-const HDRI_BY_THEME = {
-  light: "/Sala/day-sky-1k.exr",
-  dark: "/Sala/night-sky-1k.exr",
+ * llega a verlo.
+ *
+ * Son dos ficheros y no uno porque los dos usos que se le daban al `.exr` no
+ * pedían lo mismo: `fondo` es lo que se ve por encima de las paredes y quiere
+ * resolución, no rango; `luz` alimenta el `PMREMGenerator` y quiere el rango
+ * entero —el sol vale mucho más que 1— pero no resolución, porque acaba
+ * difuminada. Separados pesan la cuarta parte y se acabó descomprimir PIZ en
+ * el hilo principal. Los genera `pnpm build:sky`; no los sustituyas a mano.
+ */
+const SKY_BY_THEME = {
+  light: { fondo: "/Sala/day-sky.webp", luz: "/Sala/day-env.bin" },
+  dark: { fondo: "/Sala/night-sky.webp", luz: "/Sala/night-env.bin" },
 } as const;
 /** Las luces de relleno (ver más abajo) están pensadas para un cielo de día
  * — de noche hay que apagarlas casi del todo, si no la sala nunca se ve de
@@ -125,9 +135,15 @@ type Hit = { placementIndex: number; paintingIndex: number };
 export function Room3D({
   sections,
   initialSlug,
+  onPhase,
+  onReady,
 }: {
   sections: RoomSection[];
   initialSlug?: string;
+  /** Por dónde va el montaje. Lo pinta `RoomGate`, que es quien enseña la
+   * pantalla de carga: la sala solo dice en qué anda. */
+  onPhase?: (id: RoomLoadPhaseId, within: number) => void;
+  onReady?: () => void;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -144,13 +160,19 @@ export function Room3D({
   });
   const placement = placements[activeIndex] ?? placements[0]!;
 
-  const [loading, setLoading] = useState(true);
   const [focused, setFocused] = useState<Hit | null>(null);
   const [hovered, setHovered] = useState<Hit | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   // Puentes entre la UI de React y la escena de three, montada una sola vez.
   const focusPainting = useRef<((hit: Hit | null) => void) | null>(null);
   const enterRoom = useRef<((placement: Placement) => void) | null>(null);
+  // Por referencia y no como dependencia del efecto de montaje: si entraran
+  // en su lista, un padre que rehiciera los callbacks desmontaría y volvería
+  // a construir el museo entero.
+  const onPhaseRef = useRef(onPhase);
+  onPhaseRef.current = onPhase;
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
 
   const step = useCallback(
     (delta: number) => {
@@ -274,38 +296,172 @@ export function Room3D({
     renderer.toneMappingExposure = 0.5;
     mount.appendChild(renderer.domElement);
 
-    // Un único gestor de carga para el HDRI, las texturas PBR y los cuadros
-    // de todas las salas: en cuanto termina todo lo que se le pida, se
-    // quita el indicador de carga.
+    // ---- Montaje por fases -------------------------------------------------
+    // El museo entero se construía de un tirón, y mientras duraba el navegador
+    // no podía pintar ni un fotograma: la pantalla de carga se quedaba
+    // congelada justo cuando más falta hacía explicar la espera. Ahora cada
+    // fase devuelve el hilo al terminar y dice por dónde va.
+    let cancelled = false;
+    // Lo que haya que liberar, en orden inverso al de creación. Es una lista y
+    // no una tanda fija de líneas porque el desmontaje puede pillar el montaje
+    // a medias: solo se libera lo que llegó a existir.
+    const cleanups: Array<() => void> = [];
+
+    function fase(id: RoomLoadPhaseId, within = 0) {
+      onPhaseRef.current?.(id, within);
+    }
+
+    /** Deja pasar un fotograma —pintado incluido— antes de seguir. */
+    function cede(): Promise<void> {
+      return new Promise((resolve) => {
+        // Con la pestaña en segundo plano el navegador no llama a
+        // `requestAnimationFrame`: la carga se quedaría a medias hasta volver
+        // a ella. Ahí no hay nada que pintar, así que basta con ceder.
+        if (document.hidden) setTimeout(resolve, 0);
+        else requestAnimationFrame(() => resolve());
+      });
+    }
+
+    // Un único gestor de carga para el HDRI, las texturas PBR y los cuadros de
+    // todas las salas.
+    //
+    // Su `onLoad` **no** significa «ya está todo descargado», sino «ahora mismo
+    // no queda nada en la cola», y lo dispara cada vez que eso ocurre. Entre
+    // una fase de montaje y la siguiente pasa de sobra: lo que se pidió al
+    // levantar las paredes puede llegar entero antes de que se pidan las fotos
+    // de los cuadros. Esperar a ese aviso a secas daba la sala por lista con
+    // los lienzos todavía en blanco. Lo que de verdad hace falta saber es si la
+    // cola está vacía cuando ya no queda nada por pedir, y eso es `colaVacia`:
+    // `onStart` y `onLoad` son exactamente los dos bordes de esa cola.
+    let colaVacia = true;
+    let seguirCuandoAcabe: (() => void) | null = null;
+    // Las descargas arrancan en la primera fase, pero su progreso solo manda en
+    // la barra cuando le llega el turno; antes taparía el de las fases de
+    // construcción, que se cuenta por otro lado.
+    let midiendoDescargas = false;
+
     const manager = new THREE.LoadingManager();
-    manager.onLoad = () => setLoading(false);
+    // El modelo del árbol pide por su cuenta unas texturas que no existen; se
+    // cortan aquí, antes de que salga la petición.
+    manager.setURLModifier(interceptarTexturasDelArbol);
+    manager.onStart = () => {
+      colaVacia = false;
+    };
+    manager.onLoad = () => {
+      colaVacia = true;
+      seguirCuandoAcabe?.();
+    };
+    manager.onProgress = (_url, loaded, total) => {
+      if (midiendoDescargas) fase("descargas", total > 0 ? loaded / total : 0);
+    };
+    manager.onError = (url) => {
+      // Un fichero que falte no puede dejar la sala cargando para siempre: el
+      // gestor lo cuenta como terminado igual y la cola acaba vaciándose.
+      console.error("sala 3D: no se pudo cargar", url);
+    };
     const textureLoader = new THREE.TextureLoader(manager);
     const fbxLoader = new FBXLoader(manager);
 
-    // Luz de entorno: un HDRI de cielo real, convertido a mapa de
-    // reflejo/irradiancia. En cuanto llega, todo material PBR de la escena
-    // —pared, suelo, marcos, hasta el lienzo de cada obra— la recibe solo con
-    // poner `scene.environment`, sin tocarlos uno a uno. El mismo mapa vale
-    // como `background` —three.js sabe mostrarlo como un cielo, no solo
-    // usarlo para iluminar—: por encima de las paredes, sin techo, se ve el
-    // cielo en vez del negro liso de antes.
+    // El cielo, en sus dos mitades (ver `SKY_BY_THEME`).
     //
-    // `pmrem` se reutiliza entre el HDRI de día y el de noche —no se libera
-    // hasta desmontar la sala— porque cambiar de tema no recarga la página,
-    // solo pide otro equirectangular.
+    // La luz de entorno se convierte en mapa de reflejo/irradiancia con el
+    // `PMREMGenerator`: en cuanto llega, todo material PBR de la escena
+    // —pared, suelo, marcos, hasta el lienzo de cada obra— la recibe solo con
+    // poner `scene.environment`, sin tocarlos uno a uno.
+    //
+    // El fondo, en cambio, se pone tal cual como panorama. Antes era el propio
+    // mapa del PMREM, o sea el cielo ya pasado por el cubo de reflejos y su
+    // desenfoque; ahora es la imagen, y se ve con su resolución.
+    //
+    // `pmrem` se reutiliza entre el cielo de día y el de noche —no se libera
+    // hasta desmontar la sala— porque cambiar de tema no recarga la página.
     const pmrem = new THREE.PMREMGenerator(renderer);
     pmrem.compileEquirectangularShader();
     let envMap: THREE.Texture | null = null;
-    function applyHdri(path: string, loader: EXRLoader) {
-      loader.load(path, (hdri) => {
-        const nextEnvMap = pmrem.fromEquirectangular(hdri).texture;
-        hdri.dispose();
-        scene.environment = nextEnvMap;
-        scene.background = nextEnvMap;
-        envMap?.dispose();
-        envMap = nextEnvMap;
+    let skyMap: THREE.Texture | null = null;
+
+    // El cielo va en una esfera propia y no en `scene.background` porque el
+    // webp ya viene revelado —con el ACES y la exposición del renderer ya
+    // aplicados, ver `scripts/build-sky.ts`—: `toneMapped: false` lo muestra
+    // tal cual, mientras que el fondo de la escena vuelve a pasar por la curva
+    // y le pondría la exposición dos veces.
+    //
+    // Se guardó el brillo crudo en su día y se recortaba todo lo que pasara de
+    // 1. Parecía inofensivo, pero el sol vale 57.000 y su halo va de 1 a 5: sin
+    // ellos el cielo salía lavado, sin sol y con las nubes planas.
+    //
+    // La esfera acompaña a la cámara en cada fotograma (ver `animate`), así que
+    // el cielo no tiene paralaje: se ve tan lejos como debe.
+    const skyGeometry = new THREE.SphereGeometry(80, 64, 32);
+    const skyMaterial = new THREE.MeshBasicMaterial({
+      side: THREE.BackSide,
+      toneMapped: false,
+      depthWrite: false,
+    });
+    const sky = new THREE.Mesh(skyGeometry, skyMaterial);
+    // Primero de todo y sin escribir profundidad: es el fondo, nunca tapa nada.
+    sky.renderOrder = -1;
+    sky.frustumCulled = false;
+    scene.add(sky);
+
+    function aplicarCielo(
+      tema: "light" | "dark",
+      texturas: THREE.TextureLoader,
+      ficheros: THREE.FileLoader,
+    ) {
+      const { fondo, luz } = SKY_BY_THEME[tema];
+
+      texturas.load(fondo, (imagen) => {
+        // Sobre la esfera va como textura normal: son las UV de la geometría
+        // las que reparten el panorama, no un mapeo de reflejo.
+        //
+        // Y va espejada en horizontal a propósito. `SphereGeometry` reparte la
+        // vuelta completa con `u` creciente, mientras que el `equirectUv` con
+        // el que three dibujaba el fondo de escena la recorre como `1 - u`:
+        // tal cual, el cielo saldría al revés y el sol no caería donde la luz
+        // de entorno dice que está.
+        imagen.colorSpace = THREE.SRGBColorSpace;
+        imagen.wrapS = THREE.RepeatWrapping;
+        imagen.repeat.x = -1;
+        imagen.offset.x = 1;
+        skyMaterial.map = imagen;
+        skyMaterial.needsUpdate = true;
+        skyMap?.dispose();
+        skyMap = imagen;
         renderer.render(scene, camera);
       });
+
+      ficheros.load(luz, (contenido) => {
+        // Medidas en la cabecera y detrás los valores en media precisión, tal
+        // como los deja `pnpm build:sky`.
+        const bytes = contenido as ArrayBuffer;
+        const cabecera = new DataView(bytes);
+        const ancho = cabecera.getUint32(0, true);
+        const alto = cabecera.getUint32(4, true);
+        const equirectangular = new THREE.DataTexture(
+          new Uint16Array(bytes, 8),
+          ancho,
+          alto,
+          THREE.RGBAFormat,
+          THREE.HalfFloatType,
+        );
+        equirectangular.mapping = THREE.EquirectangularReflectionMapping;
+        equirectangular.needsUpdate = true;
+
+        const siguiente = pmrem.fromEquirectangular(equirectangular).texture;
+        equirectangular.dispose();
+        scene.environment = siguiente;
+        envMap?.dispose();
+        envMap = siguiente;
+        renderer.render(scene, camera);
+      });
+    }
+
+    /** Un lector de ficheros crudos listo para el `.bin` de la luz. */
+    function lectorDeFicheros(gestor?: THREE.LoadingManager): THREE.FileLoader {
+      const lector = new THREE.FileLoader(gestor);
+      lector.setResponseType("arraybuffer");
+      return lector;
     }
 
     // Antes de que hubiera un HDRI de entorno, estas luces tenían que hacerlo
@@ -319,68 +475,32 @@ export function Room3D({
     fill.position.set(0, 6, 8);
     scene.add(fill);
 
-    // Primera carga: por el gestor común, para que el indicador de carga la
+    // Primera carga: por el gestor común, para que la pantalla de carga la
     // espere igual que a las texturas PBR y los cuadros.
     let theme = currentTheme();
-    applyHdri(HDRI_BY_THEME[theme], new EXRLoader(manager));
+    aplicarCielo(theme, textureLoader, lectorDeFicheros(manager));
 
     // El interruptor de tema no vive en la sala —lo pone `ThemeToggle` en la
-    // cabecera del sitio—; esto solo escucha el aviso y cambia el HDRI y las
-    // luces de relleno a juego, sin recargar nada más.
+    // cabecera del sitio—; esto solo escucha el aviso y cambia el cielo y las
+    // luces de relleno a juego, sin recargar nada más. Va con cargadores
+    // sueltos, fuera del gestor: su cola ya se dio por cerrada al montar.
     function onThemeChange(event: Event) {
       const next = (event as CustomEvent<"light" | "dark">).detail;
       if (next === theme) return;
       theme = next;
-      applyHdri(HDRI_BY_THEME[theme], new EXRLoader());
+      aplicarCielo(theme, new THREE.TextureLoader(), lectorDeFicheros());
       ambient.intensity = FILL_BY_THEME[theme].ambient;
       fill.intensity = FILL_BY_THEME[theme].directional;
     }
     window.addEventListener("theme-change", onThemeChange);
 
-    const { materials, disposables: materialDisposables } = createRoomMaterials(
-      renderer,
-      textureLoader,
-      () => renderer.render(scene, camera),
-    );
-
-    // El edificio entero: paredes con hueco donde hay sala vecina, y un
-    // único suelo.
-    const floorPlan = buildFloorPlan(scene, materials, placements);
-    // El camino de piedra, por encima del suelo.
-    const path = buildPath(scene, materials, placements);
-    // Las mismas paredes, como segmentos de recta: la colisión del
-    // movimiento en primera persona choca contra esto, no contra las
-    // mallas — es la misma fuente (`wallSegments`) que ya usó `buildFloorPlan`.
-    const segments = wallSegments(placements);
-
-    // Los cuadros de **todas** las salas, de una vez: nada que cargar ni
-    // liberar al moverse. El raycaster junta los mapas de cada sala en uno
-    // solo, con la sala de cada lienzo a mano.
-    const paintingHandles = placements.map((p) =>
-      buildRoomPaintings(scene, materials, p, textureLoader, renderer, () =>
-        renderer.render(scene, camera),
-      ),
-    );
-    // El cartel con el nombre de la serie, uno por sala.
-    const labelHandles = placements.map((p) => buildRoomLabel(scene, p, renderer));
-    // Margaritas y matas de hierba sueltas por el suelo, de todas las salas
-    // a la vez.
-    const floorFlowers = buildFloorFlowers(scene, textureLoader, placements, renderer, () =>
-      renderer.render(scene, camera),
-    );
-    const floorFoliage = buildFloorFoliage(scene, textureLoader, placements, renderer, () =>
-      renderer.render(scene, camera),
-    );
-    // Un árbol por cada cruce entre columnas que tenga sentido.
-    const cornerTrees = buildCornerTrees(scene, placements, fbxLoader, textureLoader, renderer, () =>
-      renderer.render(scene, camera),
-    );
+    // Lo único que las fases de montaje —abajo del todo— tienen que dejar a la
+    // vista del resto del efecto. Hasta que les toque, las paredes son una
+    // lista vacía y no hay ningún cuadro que señalar: durante la carga no se
+    // choca con nada ni se puede hacer clic, que es justo lo que corresponde
+    // con la pantalla de carga tapando la sala.
+    let segments: ReturnType<typeof wallSegments> = [];
     const indexOfMesh = new Map<THREE.Object3D, Hit>();
-    paintingHandles.forEach((handle, placementIndex) => {
-      handle.indexOfMesh.forEach((paintingIndex, mesh) => {
-        indexOfMesh.set(mesh, { placementIndex, paintingIndex });
-      });
-    });
 
     // ---- Acercamiento a una obra: un ajuste de encuadre corto, no vuelo --
     let tween: FocusTween | null = null;
@@ -606,6 +726,10 @@ export function Room3D({
         applyMovement(dt);
       }
 
+      // El cielo viaja con la cámara: sin esto, cruzar el museo lo dejaría
+      // atrás y se vería el borde de la esfera.
+      sky.position.copy(camera.position);
+
       const roomIndex = roomAt(placements, camera.position.x, camera.position.z);
       if (roomIndex !== null && roomIndex !== lastRoomIndex) {
         lastRoomIndex = roomIndex;
@@ -622,9 +746,138 @@ export function Room3D({
         marker.setAttribute("transform", `translate(${camera.position.x} ${camera.position.z}) rotate(${deg})`);
       }
     }
-    animate();
+    /**
+     * El museo, fase a fase, devolviendo el hilo al navegador entre una y
+     * otra. El reparto no es caprichoso: se construye primero lo que sujeta
+     * la escena (paredes y suelo) y se deja para el final lo que solo la
+     * adorna, de manera que si algo tarda, tarde lo prescindible.
+     *
+     * Tras cada espera se comprueba `cancelled`: desmontar la sala a media
+     * carga —irse de la página, cambiar de serie— tiene que parar aquí, o
+     * seguiríamos añadiendo mallas a una escena que ya nadie va a liberar.
+     */
+    async function construir() {
+      fase("edificio", 0);
+      const { materials, disposables: materialDisposables } = createRoomMaterials(
+        renderer,
+        textureLoader,
+        () => renderer.render(scene, camera),
+      );
+      cleanups.push(() => {
+        for (const texture of materialDisposables) texture.dispose();
+        materials.wall.dispose();
+        materials.floor.dispose();
+        materials.frame.dispose();
+        materials.fixture.dispose();
+        materials.path.dispose();
+      });
+
+      // El edificio entero: paredes con hueco donde hay sala vecina, y un
+      // único suelo.
+      const floorPlan = buildFloorPlan(scene, materials, placements);
+      cleanups.push(() => floorPlan.dispose());
+      // El camino de piedra, por encima del suelo.
+      const path = buildPath(scene, materials, placements);
+      cleanups.push(() => path.dispose());
+      // Las mismas paredes, como segmentos de recta: la colisión del
+      // movimiento en primera persona choca contra esto, no contra las
+      // mallas — es la misma fuente (`wallSegments`) que ya usó `buildFloorPlan`.
+      segments = wallSegments(placements);
+      await cede();
+      if (cancelled) return;
+
+      // Los cuadros de **todas** las salas: nada que cargar ni liberar al
+      // moverse. Se montan sala a sala y no de una tacada porque es la parte
+      // más cara con diferencia —lienzo, marco y aplique por obra—, y en un
+      // solo bloque volvería a dejar la barra clavada. El raycaster junta los
+      // mapas de cada sala en uno solo, con la sala de cada lienzo a mano.
+      for (const [placementIndex, p] of placements.entries()) {
+        fase("cuadros", placementIndex / placements.length);
+        const handle = buildRoomPaintings(scene, materials, p, textureLoader, renderer, () =>
+          renderer.render(scene, camera),
+        );
+        cleanups.push(() => handle.dispose());
+        handle.indexOfMesh.forEach((paintingIndex, mesh) => {
+          indexOfMesh.set(mesh, { placementIndex, paintingIndex });
+        });
+        await cede();
+        if (cancelled) return;
+      }
+
+      // El cartel con el nombre de la serie, uno por sala.
+      for (const [index, p] of placements.entries()) {
+        fase("carteles", index / placements.length);
+        const handle = buildRoomLabel(scene, p, renderer);
+        cleanups.push(() => handle.dispose());
+        await cede();
+        if (cancelled) return;
+      }
+
+      // Margaritas y matas de hierba sueltas por el suelo, de todas las salas
+      // a la vez.
+      fase("jardin", 0);
+      const floorFlowers = buildFloorFlowers(scene, textureLoader, placements, renderer, () =>
+        renderer.render(scene, camera),
+      );
+      cleanups.push(() => floorFlowers.dispose());
+      await cede();
+      if (cancelled) return;
+
+      fase("jardin", 1 / 3);
+      const floorFoliage = buildFloorFoliage(scene, textureLoader, placements, renderer, () =>
+        renderer.render(scene, camera),
+      );
+      cleanups.push(() => floorFoliage.dispose());
+      await cede();
+      if (cancelled) return;
+
+      // Un árbol por cada cruce entre columnas que tenga sentido.
+      fase("jardin", 2 / 3);
+      const cornerTrees = buildCornerTrees(scene, placements, fbxLoader, textureLoader, renderer, () =>
+        renderer.render(scene, camera),
+      );
+      cleanups.push(() => cornerTrees.dispose());
+      await cede();
+      if (cancelled) return;
+
+      // Ya no queda nada que construir: solo esperar a lo que se ha ido
+      // pidiendo por el camino —el cielo, las texturas de la sala, la foto de
+      // cada obra, el árbol—. Es la espera larga, y la única cuyo progreso es
+      // un número de verdad y no un reparto por fases.
+      fase("descargas", 0);
+      midiendoDescargas = true;
+      if (!colaVacia) {
+        // Si el desmontaje pilla la sala aquí, el cleanup llama a este mismo
+        // `resolve` para que la función no se quede colgada reteniendo la
+        // escena entera.
+        await new Promise<void>((resolve) => {
+          seguirCuandoAcabe = resolve;
+        });
+        seguirCuandoAcabe = null;
+      }
+      if (cancelled) return;
+
+      // Compilar los shaders de todo lo montado antes de destapar nada. Es un
+      // tirón de varias décimas y `compileAsync` lo reparte en vez de gastarlo
+      // de golpe; dejarlo para el primer fotograma sería servirlo justo
+      // después de quitar la pantalla de carga, que es donde peor se lleva.
+      fase("acabado", 0);
+      await renderer.compileAsync(scene, camera);
+      if (cancelled) return;
+
+      fase("acabado", 1);
+      animate();
+      onReadyRef.current?.();
+    }
+
+    void construir();
 
     return () => {
+      cancelled = true;
+      // Desbloquea el montaje si estaba esperando descargas: sin esto la
+      // función de fases se quedaría colgada para siempre con la escena, el
+      // renderer y todas sus texturas dentro.
+      seguirCuandoAcabe?.();
       cancelAnimationFrame(frame);
       focusPainting.current = null;
       enterRoom.current = null;
@@ -636,21 +889,15 @@ export function Room3D({
       renderer.domElement.removeEventListener("pointerdown", onPointerDown);
       renderer.domElement.removeEventListener("pointermove", onPointerMove);
       renderer.domElement.removeEventListener("pointerup", onPointerUp);
-      for (const handle of paintingHandles) handle.dispose();
-      for (const handle of labelHandles) handle.dispose();
-      floorFlowers.dispose();
-      floorFoliage.dispose();
-      cornerTrees.dispose();
-      floorPlan.dispose();
-      path.dispose();
+      // Lo que llegaran a montar las fases, al revés de como se creó: primero
+      // lo que cuelga de la escena, después los materiales que comparten.
+      for (const limpiar of cleanups.reverse()) limpiar();
       envMap?.dispose();
+      scene.remove(sky);
+      skyGeometry.dispose();
+      skyMaterial.dispose();
+      skyMap?.dispose();
       pmrem.dispose();
-      for (const texture of materialDisposables) texture.dispose();
-      materials.wall.dispose();
-      materials.floor.dispose();
-      materials.frame.dispose();
-      materials.fixture.dispose();
-      materials.path.dispose();
       renderer.dispose();
       renderer.domElement.remove();
     };
@@ -732,16 +979,10 @@ export function Room3D({
           )}
         </button>
 
-        {/* Indicador de carga: el museo entero tarda un poco en aparecer. */}
-        {loading ? (
-          <div className="absolute inset-0 flex items-center justify-center rounded bg-[color:var(--color-canvas)]/70">
-            <div
-              className="h-10 w-10 animate-spin rounded-full border-2 border-[color:var(--color-canvas-dim)] border-t-[color:var(--color-ink)]"
-              role="status"
-              aria-label="Cargando la sala"
-            />
-          </div>
-        ) : null}
+        {/* La espera la cuenta `RoomGate` con `RoomLoader`, por encima de todo
+            esto: empieza antes de que este componente exista siquiera —cuando
+            aún se está descargando su módulo— y así la barra es una sola de
+            principio a fin. */}
 
         {/* Minimapa: el plano del museo y hacia dónde mira la cámara. */}
         {placements.length > 1 ? (
