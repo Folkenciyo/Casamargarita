@@ -175,7 +175,17 @@ export const obrasSalaPorSecciones = cacheado(
           currency: true,
           widthCm: true,
           heightCm: true,
-          images: { where: { isPrimary: true }, take: 1, select: CAMPOS_IMAGEN },
+          // Prisma no deja seleccionar la misma relación dos veces con
+          // filtros distintos, así que baja la portada y los detalles juntos
+          // —`isPrimary` o `isDetail`, un `OR`— y se separan después en
+          // `agruparPorSeccion`. La lupa de la sala 3D (§ TODO.md) tira de
+          // los detalles si la obra los tiene generados; la mayoría no, el
+          // botón de `generatePaintingDetails` es a petición.
+          images: {
+            where: { OR: [{ isPrimary: true }, { isDetail: true }] },
+            orderBy: [{ isPrimary: "desc" }, { position: "asc" }],
+            select: { ...CAMPOS_IMAGEN, isDetail: true },
+          },
           series: { select: { id: true, slug: true, title: true, published: true } },
         },
       }),

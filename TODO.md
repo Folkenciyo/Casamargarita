@@ -3,6 +3,32 @@
 Notas tal cual las fue soltando el usuario, para retomar en otra sesión. Nada
 de esto está implementado todavía — es una libreta, no un plan.
 
+## Checklist de trabajo
+
+Orden acordado para ir paso a paso. Cada punto remite a su sección más abajo
+para el detalle; esto es solo el orden de ataque. Marcar al cerrar cada uno.
+
+- [x] Revisar y mergear el PR #22 (carga bajo demanda + montaje por fases)
+- [x] Arreglar `e2e/admin/dashboard.spec.ts` — selector `main ul > li` cogía
+      la lista de orden de portada (`FeaturedOrder.tsx`) en vez de la de
+      obras; la de obras lleva ahora `aria-label="Obras"` y el test apunta ahí.
+- [x] Tramo de camino este-oeste entre columnas (§ Camino de piedra)
+- [ ] Farolas japonesas — asset más ligero y listo tal cual (§ Mobiliario y
+      decoración del jardín → Luces sueltas)
+- [x] Resplandor en el marco al acercarse, y que el cuadro se vea siempre
+      bien iluminado (§ Resplandor en el marco)
+- [ ] Linternas de suelo — adelgazar el modelo antes de integrar (§ Luces
+      sueltas)
+- [x] Pájaros en bandada, estilizados (§ Pájaros en bandada)
+- [ ] Mobiliario de jardín — banco, plantas, roca, tronco (§ Mobiliario y
+      decoración del jardín)
+- [x] Lupa con el detalle real del pipeline (§ Lupa con el detalle real)
+- [ ] Paseo guiado — dejar para el final, según el usuario (§ Paseo guiado)
+- [ ] Esculturas generadas desde los cuadros — fase avanzada (§ Esculturas)
+
+Bloqueado, esperando al usuario: reconfiguración del edificio (necesita
+planos nuevos, no inventar el plano sin ellos). Sin decidir: sonido ambiente.
+
 ## Entorno: reconfiguración del edificio
 
 El cielo y la luz ya son un HDRI de cielo limpio (`day-sky-1k.exr`,
@@ -26,13 +52,29 @@ a `night-sky-1k.exr` y baja a la vez las luces de relleno (`FILL_BY_THEME`)
 cielo—. Un botón propio de la sala se descartó: quien nunca lo toca no
 llegaría a verlo.
 
-## Pájaros en bandada, muy lejanos
+## Pájaros en bandada, muy lejanos — hecho
 
-Cruzando el cielo de vez en cuando, a mucha distancia. Explícitamente
-**no** modelos 3D realistas de pájaro — algo estilizado (siluetas, sprites),
-del mismo espíritu que el resto de la sala, no un intento de fotorrealismo.
+Seis `THREE.Sprite` (siempre de cara a la cámara, sin geometría que orientar)
+con una silueta en "M" dibujada en un `<canvas>` 2D —`drawBirdSilhouette` en
+`build-room.ts`—, no un modelo 3D: no busca fotorrealismo, es el gesto mínimo
+que se lee como ave en vuelo. `buildBirdFlock` los coloca en una formación
+fija (`BIRD_OFFSETS`, una V suave) y los mueve en vaivén diagonal —no un
+bucle circular, que a esta escala se leería como un dron— de un extremo a
+otro del plano del museo, en 140 s por pasada; `Room3D.tsx` llama a
+`update(segundos)` cada fotograma con el tiempo desde que se montó la sala.
 
-## Camino de piedra — hecho en parte
+La silueta es una máscara de alfa en blanco, no un color fijo: `setTheme`
+tiñe el material según el tema —oscura de día, gris pálida de noche—, porque
+un trazo oscuro fijo desaparecía sin remedio contra el cielo nocturno.
+
+**Sin verificar a simple vista**: el ciclo es largo (140 s) y la pestaña
+usada para probar corre en segundo plano, donde `requestAnimationFrame` casi
+no se ejecuta (ver [[casamargarita-verificar-webgl-navegador]]) — la
+trayectoria se comprobó con números reales (`layoutFloorPlan` + la misma
+fórmula), no mirándola. Confirmar en persona la próxima vez que se pasee por
+la sala con tiempo.
+
+## Camino de piedra — hecho
 
 Implementado con `TilesTerracottaBeigeSquareStacked001` (`buildPath` en
 `components/webgl/build-room.ts`): un pasillo central por sala, de puerta a
@@ -40,10 +82,12 @@ puerta, más un tramo perpendicular frente a los cuadros marcando la zona de
 visita (distancia aproximada, no la exacta de `generalViewPosition` — no
 merecía la pena enlazarlo con el cálculo de la cámara, que depende del FOV).
 
-**Queda pendiente**: el pasillo solo conecta las salas apiladas en la misma
-columna (comparten centro en X). La puerta este-oeste entre columnas —la que
-usan "Marinas de invierno" y "Cuadernos de campo"— todavía no tiene su
-propio tramo de camino.
+La puerta este-oeste entre columnas —la que usan "Marinas de invierno" y
+"Cuadernos de campo"— ya tiene su tramo: cada sala construye su propio lado,
+desde donde termina su pasillo central (`center.x ± PATH_WIDTH / 2`) hasta la
+pared compartida (`center.x ± width / 2`). Verificado con datos reales
+(`layoutFloorPlan`): el tramo este de una sala y el tramo oeste de su vecina
+terminan en la misma coordenada X exacta, sin hueco ni solape.
 
 ## Árboles en los cruces entre columnas — hecho
 
@@ -130,18 +174,57 @@ Dos ideas nuevas del usuario, con sus propios modelos ya localizados:
   a juego con lo "simple" del nombre). El más ligero de todos los assets
   que se han mirado hasta ahora, listo para probar tal cual.
 
-## Resplandor en el marco al acercarse
+## Resplandor en el marco al acercarse — hecho
 
-Al caminar cerca de un cuadro —antes de hacer clic—, un resplandor sutil en
-el marco. Refuerza que es interactivo sin depender del hover del ratón, que
-en 3D casi no se usa (uno anda con WASD, no persigue el cursor).
+Cada marco tiene ahora su propio material —antes compartían uno solo entre
+todos los cuadros de la sala, `materials.frame` clonado por obra en
+`buildRoomPaintings`— con un `emissive` en el acento de la casa
+(`FRAME_GLOW_COLOR`, `--color-oil`). `Room3D.tsx` recalcula su
+`emissiveIntensity` cada fotograma según la distancia de la cámara al centro
+del lienzo (`FRAME_GLOW_RADIUS` = 5 m, con caída `t²` para que se note sobre
+todo ya cerca), sin depender de si el cuadro está enfocado o bajo el ratón.
 
-## Lupa con el detalle real del pipeline
+De paso se resolvió lo que el usuario señaló al pedir esto: "hay zonas que
+no le dan bien la luz y eso hace que se vean muy oscuros". El aplique de
+cada obra normaliza su intensidad solo en el centro del lienzo —un cuadro
+alto se queda oscuro por abajo, porque el foco está montado arriba— y de
+noche, con las luces de relleno casi apagadas, cualquier obra mal servida
+por su aplique se iba a negro. Arreglado con `PAINTING_BASE_EMISSIVE`: el
+lienzo usa su propia textura como `emissiveMap`, así que brilla con sus
+propios colores como suelo de luz, y el aplique y el entorno le siguen dando
+contraste por encima sin que se note un suelo aparte. Verificado de noche en
+el navegador: los cuadros se leen con claridad incluso con el ambiente casi
+en negro.
 
-Al acercarse mucho a un cuadro, tirar de las fotos de detalle generadas por
-`generatePaintingDetails` (`lib/admin/actions.ts` + `lib/images/details.ts`)
-en vez de seguir mostrando la textura de siempre — como una lupa que ya
-tiene los datos hechos, no una textura más grande sin más.
+## Lupa con el detalle real del pipeline — hecho
+
+`obrasSalaPorSecciones` (`lib/public/queries.ts`) baja ahora la portada y
+las fotos de detalle de cada obra en la misma consulta —Prisma no deja
+seleccionar la misma relación (`images`) dos veces con filtros distintos, así
+que va un único `where: OR: [isPrimary, isDetail]`, separadas después por
+`page.tsx` en `textureUrl` (portada) y `detailUrls` (detalle, a su mayor
+ancho servido: de cerca es donde se nota el grano si no lo tiene)—.
+
+En la sala, `buildRoomPaintings` (`build-room.ts`) registra cada lienzo con
+`detailUrls.length > 0` como "lupa"; `update(camera)` —llamado cada
+fotograma desde `Room3D.tsx`— cambia el `map`/`emissiveMap` del material a
+la foto de detalle en cuanto la cámara pasa de `MAGNIFIER_DISTANCE` (0,9 m,
+más cerca que donde para el acercamiento automático al hacer clic) y lo
+devuelve a la portada al alejarse. La foto de detalle no se pide hasta la
+primera vez que alguien se acerca tanto —confirmado sin peticiones de red
+a un detalle real estando lejos—; con varias, se usa siempre la primera del
+orden (`position` ascendente): no hay forma barata de saber desde fuera del
+pipeline qué zona del lienzo mira cada una para elegir la más cercana.
+
+**Sin caminar hasta comprobarlo en persona**: la obra de prueba en la base
+de desarrollo (`the-prairie-on-fire`, 24×17 cm) es minúscula y está entre
+otras dos en "Marinas de invierno" — encontrarla a ciegas moviendo la
+cámara por script, en una pestaña en segundo plano sin WASD fiable (ver
+[[casamargarita-verificar-webgl-navegador]]), no salió a tiempo. Verificado
+en su lugar: la consulta corre contra Postgres de verdad (200 OK, no un
+mock), tipos limpios de punta a punta y ninguna petición de red a la foto de
+detalle mientras la cámara está lejos. Falta el paseo real, acercándose de
+verdad a un cuadro con detalles generados.
 
 ## Paseo guiado
 

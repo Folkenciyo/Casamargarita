@@ -47,8 +47,14 @@ test("avisa de las obras que no tienen ninguna foto", async ({ page }) => {
   await expect(page).toHaveURL(/\/admin\/obras\?foto=sin$/);
 
   // Dentro de la lista: "Sin foto" también es una opción del propio filtro,
-  // y getByText no distingue mayúsculas.
-  await expect(page.locator("main ul > li").first()).toContainText("sin foto");
+  // y getByText no distingue mayúsculas. Se apunta a la lista de obras por su
+  // nombre accesible y no a "main ul" a secas: con dos o más destacadas,
+  // FeaturedOrder mete su propia <ul> antes en el DOM (el sembrado deja
+  // "Amanecer en el estudio" y "Bodegón vendido" como featured), y `.first()`
+  // sin cualificar cogía esa lista en vez de la de obras.
+  await expect(
+    page.getByRole("list", { name: "Obras" }).locator("li").first(),
+  ).toContainText("sin foto");
 });
 
 test("la navegación del panel marca dónde estás", async ({ page }) => {

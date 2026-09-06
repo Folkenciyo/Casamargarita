@@ -8,6 +8,7 @@ import { EXRLoader } from "three/examples/jsm/loaders/EXRLoader.js";
 import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
 import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLightUniformsLib.js";
 import {
+  buildBirdFlock,
   buildCornerTrees,
   buildFloorFlowers,
   buildFloorFoliage,
@@ -16,7 +17,10 @@ import {
   buildRoomLabel,
   buildRoomPaintings,
   createRoomMaterials,
+  FRAME_GLOW_MAX,
+  FRAME_GLOW_RADIUS,
   interceptarTexturasDelArbol,
+  type FrameGlowTarget,
 } from "./build-room";
 import {
   facingSign,
@@ -416,6 +420,7 @@ export function Room3D({
       applyHdri(HDRI_BY_THEME[theme], new EXRLoader());
       ambient.intensity = FILL_BY_THEME[theme].ambient;
       fill.intensity = FILL_BY_THEME[theme].directional;
+      birds?.setTheme(theme);
     }
     window.addEventListener("theme-change", onThemeChange);
 
@@ -426,6 +431,16 @@ export function Room3D({
     // con la pantalla de carga tapando la sala.
     let segments: ReturnType<typeof wallSegments> = [];
     const indexOfMesh = new Map<THREE.Object3D, Hit>();
+    // Marcos de todas las salas, para el resplandor al acercarse — ver
+    // `FRAME_GLOW_*` en build-room.ts. Una sola lista plana: da igual de qué
+    // sala sea cada uno, `animate()` solo mira su distancia a la cámara.
+    const glowTargets: FrameGlowTarget[] = [];
+    // Un `update` por sala, para la lupa (ver `MAGNIFIER_DISTANCE` en
+    // build-room.ts) — cada uno ya sabe qué lienzos son suyos.
+    const paintingUpdates: Array<(camera: THREE.Camera) => void> = [];
+    // Se monta en la fase de jardín, más abajo; hasta entonces no hay nada
+    // que mover en `animate()`.
+    let birds: ReturnType<typeof buildBirdFlock> | null = null;
 
     // ---- Acercamiento a una obra: un ajuste de encuadre corto, no vuelo --
     let tween: FocusTween | null = null;
@@ -626,6 +641,11 @@ export function Room3D({
     let lastFrameTime = performance.now();
     // Distinto de cualquier índice real: fuerza el primer chequeo de sala.
     let lastRoomIndex = -1;
+    // Los segundos que lleva volando la bandada se cuentan desde que se monta
+    // la sala, no desde una hora fija: cada visita la ve empezar su vaivén
+    // desde el mismo punto, en vez de aparecer a mitad de recorrido según la
+    // hora a la que se entre.
+    const mountStart = performance.now();
 
     function animate() {
       frame = requestAnimationFrame(animate);
@@ -656,6 +676,18 @@ export function Room3D({
         lastRoomIndex = roomIndex;
         setActiveIndex(roomIndex);
       }
+
+      // Resplandor del marco: crece según se acerca la cámara, sin depender
+      // de si el cuadro está enfocado o bajo el ratón. `t * t` y no `t` a
+      // secas —el brillo se nota sobre todo ya cerca del cuadro, en vez de
+      // repartirse por igual desde `FRAME_GLOW_RADIUS`—.
+      for (const target of glowTargets) {
+        const t = Math.max(0, 1 - camera.position.distanceTo(target.position) / FRAME_GLOW_RADIUS);
+        target.material.emissiveIntensity = t * t * FRAME_GLOW_MAX;
+      }
+
+      birds?.update((now - mountStart) / 1000);
+      for (const update of paintingUpdates) update(camera);
 
       renderer.render(scene, camera);
 
@@ -721,6 +753,8 @@ export function Room3D({
         handle.indexOfMesh.forEach((paintingIndex, mesh) => {
           indexOfMesh.set(mesh, { placementIndex, paintingIndex });
         });
+        glowTargets.push(...handle.glowTargets);
+        paintingUpdates.push(handle.update);
         await cede();
         if (cancelled) return;
       }
@@ -744,7 +778,7 @@ export function Room3D({
       await cede();
       if (cancelled) return;
 
-      fase("jardin", 1 / 3);
+      fase("jardin", 1 / 4);
       const floorFoliage = buildFloorFoliage(scene, textureLoader, placements, renderer, () =>
         renderer.render(scene, camera),
       );
@@ -753,11 +787,21 @@ export function Room3D({
       if (cancelled) return;
 
       // Un árbol por cada cruce entre columnas que tenga sentido.
-      fase("jardin", 2 / 3);
+      fase("jardin", 2 / 4);
       const cornerTrees = buildCornerTrees(scene, placements, fbxLoader, textureLoader, renderer, () =>
         renderer.render(scene, camera),
       );
       cleanups.push(() => cornerTrees.dispose());
+      await cede();
+      if (cancelled) return;
+
+      // La bandada que cruza el cielo — no carga ningún fichero (silueta
+      // dibujada en canvas), así que no aporta nada a la barra de descargas,
+      // pero se le da su fotograma de respiro igual que al resto.
+      fase("jardin", 3 / 4);
+      birds = buildBirdFlock(scene, placements);
+      birds.setTheme(theme);
+      cleanups.push(() => birds?.dispose());
       await cede();
       if (cancelled) return;
 
