@@ -1139,16 +1139,29 @@ const BIRD_MODEL = "/Sala/pajaro/bird.3ds";
  * completos—; se usa solo la primera y se descarta la segunda.
  */
 const BIRD_MODEL_MESH_INDEX = 0;
-/** Envergadura real del modelo tal como lo carga `TDSLoader` —que ya aplica
- * su propia escala interna del `.3ds`—, medida con `Box3` una vez corregido
- * el eje (ver `BIRD_MODEL_UP_FIX`). De ahí sale `BIRD_MODEL_SCALE`; no se
- * puede asumir escala 1:1 con un modelo nuevo, hay que volver a medir. */
-const BIRD_MODEL_RAW_WINGSPAN = 34.71;
+/**
+ * Envergadura real de **un solo** pájaro tras aplicar `BIRD_MODEL_UP_FIX` —
+ * es decir, ya con la escala propia que cada malla trae en su matriz
+ * (`mesh.scale`, ~0,0386), pero sin la del grupo, que en este archivo vale 1.
+ *
+ * El `.3ds` trae **dos** aves puestas una junto a otra mediante
+ * `mesh.position` —no es un ala y un cuerpo sueltos, son dos ejemplares
+ * completos, ver `BIRD_MODEL_MESH_INDEX`—; medir con `Box3` el grupo entero
+ * da la envergadura de las dos juntas (34,71), el doble de una sola (16,69).
+ * El primer intento usó el número equivocado y además pisó la escala propia
+ * del mesh con `scale.setScalar(...)` en vez de multiplicarla: la envergadura
+ * de verdad salió bastante más de 10 veces mayor de la que se pedía. No se
+ * puede asumir ninguna de estas dos cosas con un modelo nuevo —hay que medir
+ * un solo hijo del grupo, con su matriz ya aplicada, y multiplicar la escala
+ * en vez de sustituirla—.
+ */
+const BIRD_MODEL_TRUE_WINGSPAN = 16.69;
 /** Envergadura que se quiere en la sala: pequeña de verdad, para que se lea
- * como un pájaro muy lejano y no como un objeto —la queja de partida era
- * justo que los anteriores parecían grandes y cercanos. */
-const BIRD_WINGSPAN_M = 0.22;
-const BIRD_MODEL_SCALE = BIRD_WINGSPAN_M / BIRD_MODEL_RAW_WINGSPAN;
+ * como un pájaro muy lejano y no como un objeto. */
+const BIRD_WINGSPAN_M = 0.16;
+/** Factor **adicional** sobre la escala que el mesh ya trae en su matriz —se
+ * multiplica, nunca sustituye—. */
+const BIRD_MODEL_SCALE = BIRD_WINGSPAN_M / BIRD_MODEL_TRUE_WINGSPAN;
 /** El `.3ds` viene con Z arriba (convención de 3ds Max); three.js espera Y
  * arriba. Sin este giro el pájaro vuela tumbado de lado. */
 const BIRD_MODEL_UP_FIX = -Math.PI / 2;
@@ -1161,11 +1174,14 @@ const BIRD_MODEL_UP_FIX = -Math.PI / 2;
 const BIRD_MODEL_YAW_OFFSET = 0;
 
 /** Altura de vuelo: muy por encima de la pared, para que se lean como algo
- * que sobrevuela el edificio a distancia y no como si rozara el tejado. */
-const BIRD_HEIGHT = 22;
+ * que sobrevuela el edificio a distancia y no como si rozara el tejado.
+ * Subida de 22 a 40 tras la primera queja: con el bug de escala de arriba,
+ * un pájaro diez veces más grande de lo debido se leía como cercano al
+ * suelo por mucho que volara "alto" en números. */
+const BIRD_HEIGHT = 40;
 /** Cuánto varía la altura de vuelo de un pájaro a otro, y de un pase al
  * siguiente del solitario — nada vuela todo en el mismo plano exacto. */
-const BIRD_HEIGHT_JITTER = 3;
+const BIRD_HEIGHT_JITTER = 5;
 /** Colores tierra —marrón, beige— y no el azul del modelo original: el
  * material de fábrica es gris liso sin textura, así que tintarlo es gratis. */
 const BIRD_COLORS = ["#8a6642", "#c2a878", "#6b4a30", "#a97d54", "#d8c39a"] as const;
@@ -1255,12 +1271,19 @@ export function buildBirdFlock(
     function spawnBird(along: number, side: number, height: number, direction: ReturnType<typeof birdDirection>) {
       const bird = source as THREE.Mesh;
       const instance = bird.clone();
+      // El archivo separa las dos aves con esta `position`; sin anularla,
+      // cada copia arrastraría el hueco entre ambas y giraría sobre un
+      // pivote descentrado en vez de sobre su propio eje.
+      instance.position.set(0, 0, 0);
       instance.material = (bird.material as THREE.MeshStandardMaterial).clone();
       const color = BIRD_COLORS[Math.floor(Math.random() * BIRD_COLORS.length)]!;
       (instance.material as THREE.MeshStandardMaterial).color.set(color);
       disposables.push(instance.material as THREE.MeshStandardMaterial);
 
-      instance.scale.setScalar(BIRD_MODEL_SCALE);
+      // Multiplica la escala que el mesh ya trae en su matriz —no la
+      // sustituye—: `setScalar` aquí fue el bug que hacía salir el pájaro
+      // muchísimo más grande de lo pedido (ver `BIRD_MODEL_TRUE_WINGSPAN`).
+      instance.scale.multiplyScalar(BIRD_MODEL_SCALE);
       instance.rotation.x = BIRD_MODEL_UP_FIX;
       instance.rotation.z = Math.atan2(direction.dirX, direction.dirZ) + BIRD_MODEL_YAW_OFFSET;
       scene.add(instance);
