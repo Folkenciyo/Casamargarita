@@ -101,6 +101,16 @@ castellano, con sus tildes.
   visible hasta bajar el `AmbientLight`. Se generan con
   `pnpm build:room-textures` a partir de los originales en las mismas
   carpetas; no sustituyas el `.webp` a mano, igual que las margaritas.
+- **El cielo va en `.exr` entero, y no se toca.** Pesa 1,1 MB el de día y
+  1,7 MB el de noche, y descomprimirlo cuesta 160–190 ms de hilo principal.
+  Aun así se queda: se intentó partirlo en una imagen ligera para el fondo y
+  un mapa reducido para la luz —la cuarta parte de peso y sin descompresión—
+  y el resultado fue peor de mirar, que es justo para lo que está. Por ese
+  camino se pierden el sol y el relieve de las nubes de día, y el color de
+  las estrellas y la aurora de noche; el fondo deja de ser el cubo de
+  reflejos del PMREM y se nota. Si se vuelve a intentar, que sea sin bajarle
+  el rango ni la resolución al cielo, y comparando de día **y** de noche
+  antes de dar nada por bueno.
 - **Si añades un `<script>` inline, pásale `scriptNonce()`.** Con la CSP
   activa, sin nonce el navegador lo bloquea.
 - **De un fichero con `"use server"` solo se exportan funciones async.** Una

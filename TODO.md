@@ -16,15 +16,15 @@ nuevos: las paredes siguen con su textura de museo, y el plano de las salas
 de algunas cosas del edificio. Hay que pedírselos cuando se retome esto; no
 inventar el plano sin ellos.
 
-## Modo nocturno
+## Modo nocturno — hecho
 
-Una segunda ambientación: cielo oscuro con estrellas, los apliques como
-única fuente de luz sobre los cuadros. Reutiliza lo que ya existe (el HDRI
-como `environment`/`background`, los apliques con su `RectAreaLight`) — el
-HDRI nocturno ya está en el proyecto, sin usar todavía:
-`public/Sala/night-sky-1k.exr`. Falta el propio interruptor día/noche —
-un botón o similar que cambie `ROOM_HDRI` en caliente— y decidir si también
-hay que apagar u oscurecer las luces de los apliques a la vez.
+Cielo oscuro y los apliques como luz principal sobre los cuadros. No lleva
+interruptor propio: lo manda el de claro/oscuro del sitio (`ThemeToggle`),
+que lanza un evento `theme-change`; `Room3D.tsx` lo escucha, cambia el HDRI
+a `night-sky-1k.exr` y baja a la vez las luces de relleno (`FILL_BY_THEME`)
+—sin eso la sala no llegaba a verse de noche por mucho que cambiara el
+cielo—. Un botón propio de la sala se descartó: quien nunca lo toca no
+llegaría a verlo.
 
 ## Pájaros en bandada, muy lejanos
 
@@ -154,10 +154,49 @@ Generar un modelo 3D a partir de la imagen de cada obra y mostrarlo como
 escultura en la sala. Marcado explícitamente como algo para fases
 avanzadas — no es para las próximas sesiones.
 
-## Rendimiento
+## Rendimiento — hecho en parte
 
-Cuando se aborde, hacerlo con Opus — decisión ya tomada por el usuario, no
-es una tarea de código en sí sino una nota de con qué modelo abordarla.
+La entrada ya no se lleva la espera por delante. La sala no se monta al
+abrir la página sino al pulsar «Entrar en la sala», y hasta ese clic no se
+descarga nada —ni three.js siquiera: `RoomGate` pide el módulo con
+`next/dynamic`, y lo adelanta al pasar el ratón por el botón—. El montaje
+va por fases que devuelven el hilo al navegador entre una y otra, con la
+espera contada por `RoomLoader` (el mismo shader de óleo de las
+transiciones, con el progreso real de la carga en vez del tiempo), y los
+shaders se compilan con `compileAsync` antes de destapar la sala, para que
+ese tirón no caiga justo después de quitar la pantalla de carga.
+
+Ojo con el gestor de carga de three al tocar esto: su `onLoad` no significa
+«ya está todo», sino «ahora mismo no queda nada en la cola», y lo dispara
+cada vez que eso pasa —entre fase y fase, de sobra—. Por eso lo que se
+espera es `colaVacia` cuando ya no queda nada por pedir, no el aviso suelto.
+
+### El cielo no se toca — probado y descartado
+
+Los `.exr` siguen enteros: 1,1 MB el de día, 1,7 MB el de noche, con sus
+160–190 ms de descompresión PIZ. Es lo más caro que carga la sala y aun así
+se queda.
+
+Se llegó a partir en dos —un webp para el fondo y un mapa reducido en media
+precisión para la luz—, con `scene.background` sustituido por una esfera
+propia. Pesaba la cuarta parte y quitaba la descompresión entera. Pero el
+resultado se vio peor: **de día se pierden el sol y el relieve de las nubes,
+y de noche el color de las estrellas y la aurora**. Con el fondo ya no salido
+del cubo de reflejos del PMREM, el cielo se queda plano por mucho que se
+ajuste la exposición —y ajustarla no es gratis: revelarlo con el 0,5 del
+renderer lo deja en azul marino a mediodía, y subirlo de noche convierte el
+negro en gris lechoso—.
+
+**Si se retoma**, que no sea a costa del rango ni de la resolución del cielo,
+y comparando de día **y** de noche antes de dar nada por bueno. El camino que
+queda sin explorar es un contenedor más ligero a la misma resolución y con el
+mismo rango (recomprimir el `.exr` con DWAA, que el `EXRLoader` sí sabe leer),
+para lo que hace falta una herramienta que escriba EXR y no hay ninguna en el
+proyecto.
+
+**Aparte de eso**: sobran unos 7 MB en `public/Sala` que no referencia nadie
+—`church-museum-1k.exr` (5,6 MB) y `meadow-1k.exr` (1,5 MB, el cielo
+anterior)—. No los descarga el navegador, pero viajan en la imagen de Docker.
 
 ## Sonido ambiente (propuesta sin decidir)
 
