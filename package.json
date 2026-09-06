@@ -19,7 +19,6 @@
     "build:flower-decal": "node --experimental-strip-types scripts/build-flower-decal.ts",
     "build:foliage-decal": "node --experimental-strip-types scripts/build-foliage-decal.ts",
     "build:tree-textures": "node --experimental-strip-types scripts/build-tree-textures.ts",
-    "build:sky": "node --experimental-strip-types scripts/build-sky.ts",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",

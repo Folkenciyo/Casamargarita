@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import { EXRLoader } from "three/examples/jsm/loaders/EXRLoader.js";
 import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
 import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLightUniformsLib.js";
 import {
@@ -43,20 +44,20 @@ const FRAMED_WIDTH = 6;
  * una forma de moverse por el museo —de eso se encarga WASD. */
 const FOCUS_MS = 400;
 /**
- * Qué cielo usar según el tema del sitio — el mismo interruptor claro/oscuro
+ * Qué HDRI usar según el tema del sitio — el mismo interruptor claro/oscuro
  * de la cabecera, no un botón propio de la sala: quien nunca lo toca no
  * llega a verlo.
  *
- * Son dos ficheros y no uno porque los dos usos que se le daban al `.exr` no
- * pedían lo mismo: `fondo` es lo que se ve por encima de las paredes y quiere
- * resolución, no rango; `luz` alimenta el `PMREMGenerator` y quiere el rango
- * entero —el sol vale mucho más que 1— pero no resolución, porque acaba
- * difuminada. Separados pesan la cuarta parte y se acabó descomprimir PIZ en
- * el hilo principal. Los genera `pnpm build:sky`; no los sustituyas a mano.
+ * Va el `.exr` entero, con su rango dinámico completo, y el mismo mapa sirve
+ * de luz y de cielo. Se probó a partirlo en una imagen ligera para el fondo y
+ * un mapa reducido para la luz —pesaba la cuarta parte y ahorraba los 160 ms
+ * de descomprimirlo—, pero por ese camino se pierden el sol y el relieve de
+ * las nubes de día, y el color de las estrellas y la aurora de noche. El
+ * cielo de esta sala es de las cosas que se miran, así que se paga entero.
  */
-const SKY_BY_THEME = {
-  light: { fondo: "/Sala/day-sky.webp", luz: "/Sala/day-env.bin" },
-  dark: { fondo: "/Sala/night-sky.webp", luz: "/Sala/night-env.bin" },
+const HDRI_BY_THEME = {
+  light: "/Sala/day-sky-1k.exr",
+  dark: "/Sala/night-sky-1k.exr",
 } as const;
 /** Las luces de relleno (ver más abajo) están pensadas para un cielo de día
  * — de noche hay que apagarlas casi del todo, si no la sala nunca se ve de
@@ -362,106 +363,30 @@ export function Room3D({
     const textureLoader = new THREE.TextureLoader(manager);
     const fbxLoader = new FBXLoader(manager);
 
-    // El cielo, en sus dos mitades (ver `SKY_BY_THEME`).
-    //
-    // La luz de entorno se convierte en mapa de reflejo/irradiancia con el
-    // `PMREMGenerator`: en cuanto llega, todo material PBR de la escena
+    // Luz de entorno: un HDRI de cielo real, convertido a mapa de
+    // reflejo/irradiancia. En cuanto llega, todo material PBR de la escena
     // —pared, suelo, marcos, hasta el lienzo de cada obra— la recibe solo con
-    // poner `scene.environment`, sin tocarlos uno a uno.
+    // poner `scene.environment`, sin tocarlos uno a uno. El mismo mapa vale
+    // como `background` —three.js sabe mostrarlo como un cielo, no solo
+    // usarlo para iluminar—: por encima de las paredes, sin techo, se ve el
+    // cielo en vez del negro liso de antes.
     //
-    // El fondo, en cambio, se pone tal cual como panorama. Antes era el propio
-    // mapa del PMREM, o sea el cielo ya pasado por el cubo de reflejos y su
-    // desenfoque; ahora es la imagen, y se ve con su resolución.
-    //
-    // `pmrem` se reutiliza entre el cielo de día y el de noche —no se libera
-    // hasta desmontar la sala— porque cambiar de tema no recarga la página.
+    // `pmrem` se reutiliza entre el HDRI de día y el de noche —no se libera
+    // hasta desmontar la sala— porque cambiar de tema no recarga la página,
+    // solo pide otro equirectangular.
     const pmrem = new THREE.PMREMGenerator(renderer);
     pmrem.compileEquirectangularShader();
     let envMap: THREE.Texture | null = null;
-    let skyMap: THREE.Texture | null = null;
-
-    // El cielo va en una esfera propia y no en `scene.background` porque el
-    // webp ya viene revelado —con el ACES y la exposición del renderer ya
-    // aplicados, ver `scripts/build-sky.ts`—: `toneMapped: false` lo muestra
-    // tal cual, mientras que el fondo de la escena vuelve a pasar por la curva
-    // y le pondría la exposición dos veces.
-    //
-    // Se guardó el brillo crudo en su día y se recortaba todo lo que pasara de
-    // 1. Parecía inofensivo, pero el sol vale 57.000 y su halo va de 1 a 5: sin
-    // ellos el cielo salía lavado, sin sol y con las nubes planas.
-    //
-    // La esfera acompaña a la cámara en cada fotograma (ver `animate`), así que
-    // el cielo no tiene paralaje: se ve tan lejos como debe.
-    const skyGeometry = new THREE.SphereGeometry(80, 64, 32);
-    const skyMaterial = new THREE.MeshBasicMaterial({
-      side: THREE.BackSide,
-      toneMapped: false,
-      depthWrite: false,
-    });
-    const sky = new THREE.Mesh(skyGeometry, skyMaterial);
-    // Primero de todo y sin escribir profundidad: es el fondo, nunca tapa nada.
-    sky.renderOrder = -1;
-    sky.frustumCulled = false;
-    scene.add(sky);
-
-    function aplicarCielo(
-      tema: "light" | "dark",
-      texturas: THREE.TextureLoader,
-      ficheros: THREE.FileLoader,
-    ) {
-      const { fondo, luz } = SKY_BY_THEME[tema];
-
-      texturas.load(fondo, (imagen) => {
-        // Sobre la esfera va como textura normal: son las UV de la geometría
-        // las que reparten el panorama, no un mapeo de reflejo.
-        //
-        // Y va espejada en horizontal a propósito. `SphereGeometry` reparte la
-        // vuelta completa con `u` creciente, mientras que el `equirectUv` con
-        // el que three dibujaba el fondo de escena la recorre como `1 - u`:
-        // tal cual, el cielo saldría al revés y el sol no caería donde la luz
-        // de entorno dice que está.
-        imagen.colorSpace = THREE.SRGBColorSpace;
-        imagen.wrapS = THREE.RepeatWrapping;
-        imagen.repeat.x = -1;
-        imagen.offset.x = 1;
-        skyMaterial.map = imagen;
-        skyMaterial.needsUpdate = true;
-        skyMap?.dispose();
-        skyMap = imagen;
-        renderer.render(scene, camera);
-      });
-
-      ficheros.load(luz, (contenido) => {
-        // Medidas en la cabecera y detrás los valores en media precisión, tal
-        // como los deja `pnpm build:sky`.
-        const bytes = contenido as ArrayBuffer;
-        const cabecera = new DataView(bytes);
-        const ancho = cabecera.getUint32(0, true);
-        const alto = cabecera.getUint32(4, true);
-        const equirectangular = new THREE.DataTexture(
-          new Uint16Array(bytes, 8),
-          ancho,
-          alto,
-          THREE.RGBAFormat,
-          THREE.HalfFloatType,
-        );
-        equirectangular.mapping = THREE.EquirectangularReflectionMapping;
-        equirectangular.needsUpdate = true;
-
-        const siguiente = pmrem.fromEquirectangular(equirectangular).texture;
-        equirectangular.dispose();
-        scene.environment = siguiente;
+    function applyHdri(path: string, loader: EXRLoader) {
+      loader.load(path, (hdri) => {
+        const nextEnvMap = pmrem.fromEquirectangular(hdri).texture;
+        hdri.dispose();
+        scene.environment = nextEnvMap;
+        scene.background = nextEnvMap;
         envMap?.dispose();
-        envMap = siguiente;
+        envMap = nextEnvMap;
         renderer.render(scene, camera);
       });
-    }
-
-    /** Un lector de ficheros crudos listo para el `.bin` de la luz. */
-    function lectorDeFicheros(gestor?: THREE.LoadingManager): THREE.FileLoader {
-      const lector = new THREE.FileLoader(gestor);
-      lector.setResponseType("arraybuffer");
-      return lector;
     }
 
     // Antes de que hubiera un HDRI de entorno, estas luces tenían que hacerlo
@@ -478,17 +403,17 @@ export function Room3D({
     // Primera carga: por el gestor común, para que la pantalla de carga la
     // espere igual que a las texturas PBR y los cuadros.
     let theme = currentTheme();
-    aplicarCielo(theme, textureLoader, lectorDeFicheros(manager));
+    applyHdri(HDRI_BY_THEME[theme], new EXRLoader(manager));
 
     // El interruptor de tema no vive en la sala —lo pone `ThemeToggle` en la
-    // cabecera del sitio—; esto solo escucha el aviso y cambia el cielo y las
-    // luces de relleno a juego, sin recargar nada más. Va con cargadores
-    // sueltos, fuera del gestor: su cola ya se dio por cerrada al montar.
+    // cabecera del sitio—; esto solo escucha el aviso y cambia el HDRI y las
+    // luces de relleno a juego, sin recargar nada más. Va con un cargador
+    // suelto, fuera del gestor: su cola ya se dio por cerrada al montar.
     function onThemeChange(event: Event) {
       const next = (event as CustomEvent<"light" | "dark">).detail;
       if (next === theme) return;
       theme = next;
-      aplicarCielo(theme, new THREE.TextureLoader(), lectorDeFicheros());
+      applyHdri(HDRI_BY_THEME[theme], new EXRLoader());
       ambient.intensity = FILL_BY_THEME[theme].ambient;
       fill.intensity = FILL_BY_THEME[theme].directional;
     }
@@ -726,10 +651,6 @@ export function Room3D({
         applyMovement(dt);
       }
 
-      // El cielo viaja con la cámara: sin esto, cruzar el museo lo dejaría
-      // atrás y se vería el borde de la esfera.
-      sky.position.copy(camera.position);
-
       const roomIndex = roomAt(placements, camera.position.x, camera.position.z);
       if (roomIndex !== null && roomIndex !== lastRoomIndex) {
         lastRoomIndex = roomIndex;
@@ -893,10 +814,6 @@ export function Room3D({
       // lo que cuelga de la escena, después los materiales que comparten.
       for (const limpiar of cleanups.reverse()) limpiar();
       envMap?.dispose();
-      scene.remove(sky);
-      skyGeometry.dispose();
-      skyMaterial.dispose();
-      skyMap?.dispose();
       pmrem.dispose();
       renderer.dispose();
       renderer.domElement.remove();

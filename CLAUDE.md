@@ -101,24 +101,16 @@ castellano, con sus tildes.
   visible hasta bajar el `AmbientLight`. Se generan con
   `pnpm build:room-textures` a partir de los originales en las mismas
   carpetas; no sustituyas el `.webp` a mano, igual que las margaritas.
-- **El cielo de la sala son dos ficheros, no uno.** `*-sky.webp` es lo que se
-  ve (quiere resolución, no rango dinámico) y `*-env.bin` es la luz de
-  entorno (quiere el rango entero, pero no resolución: el `PMREMGenerator` la
-  difumina igual, y monta su cubo con un lado de un cuarto del ancho que le
-  den). Salen del `.exr` con `pnpm build:sky`; no los sustituyas a mano, igual
-  que las margaritas y las texturas de la sala. Juntos pesan la cuarta parte
-  que el `.exr` y ahorran los 160–190 ms que costaba descomprimir PIZ en el
-  hilo principal.
-- **El cielo se revela al generarlo, con su propia exposición.** El webp sale
-  ya pasado por el ACES del renderer, y se pinta con `toneMapped: false` sobre
-  una esfera propia para que no se le aplique la curva dos veces. La
-  exposición (`SKY_EXPOSURE`) **no** es la del renderer: ese 0,5 está para que
-  el HDRI no queme la pared clara de la sala, y revelando el cielo con él sale
-  azul marino a mediodía. Como la luz de la sala va ahora por el `.bin`, el
-  cielo puede tener la suya: 2 de día, 0,9 de noche —subirla de 1 de noche
-  convierte el negro en gris lechoso y se acaba la noche—. No guardes los
-  valores crudos recortando por encima de 1: el sol vale 57.000 y su halo va
-  de 1 a 5, y sin ellos no hay ni sol ni relieve en las nubes.
+- **El cielo va en `.exr` entero, y no se toca.** Pesa 1,1 MB el de día y
+  1,7 MB el de noche, y descomprimirlo cuesta 160–190 ms de hilo principal.
+  Aun así se queda: se intentó partirlo en una imagen ligera para el fondo y
+  un mapa reducido para la luz —la cuarta parte de peso y sin descompresión—
+  y el resultado fue peor de mirar, que es justo para lo que está. Por ese
+  camino se pierden el sol y el relieve de las nubes de día, y el color de
+  las estrellas y la aurora de noche; el fondo deja de ser el cubo de
+  reflejos del PMREM y se nota. Si se vuelve a intentar, que sea sin bajarle
+  el rango ni la resolución al cielo, y comparando de día **y** de noche
+  antes de dar nada por bueno.
 - **Si añades un `<script>` inline, pásale `scriptNonce()`.** Con la CSP
   activa, sin nonce el navegador lo bloquea.
 - **De un fichero con `"use server"` solo se exportan funciones async.** Una

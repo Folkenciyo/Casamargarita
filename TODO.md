@@ -171,30 +171,32 @@ Ojo con el gestor de carga de three al tocar esto: su `onLoad` no significa
 cada vez que eso pasa —entre fase y fase, de sobra—. Por eso lo que se
 espera es `colaVacia` cuando ya no queda nada por pedir, no el aviso suelto.
 
-Los cielos ya no son un `.exr` en tiempo de ejecución. Se descubrió que a
-ese fichero se le pedían dos cosas que no necesitan lo mismo, y ahora van
-por separado (`pnpm build:sky`, `SKY_BY_THEME` en `Room3D.tsx`):
+### El cielo no se toca — probado y descartado
 
-- `day-sky.webp` / `night-sky.webp` — el cielo que se ve. Quiere resolución,
-  no rango dinámico. 19 y 48 kB. Va en una esfera propia con
-  `toneMapped: false`, no en `scene.background`: sale del script ya revelado
-  y con su propia exposición, que no es la del renderer (ver `CLAUDE.md`).
-  Antes el fondo era el cubo de reflejos del PMREM, o sea el cielo ya
-  desenfocado, así que además se ve más nítido que antes.
-- `day-env.bin` / `night-env.bin` — la luz. Quiere el rango entero (el sol
-  vale mucho más que 1) pero no resolución, porque el PMREM la difumina de
-  todas formas: 256×128 en media precisión, 257 kB. El `PMREMGenerator`
-  monta su cubo con un lado de un cuarto del ancho que le den, de ahí el 256.
+Los `.exr` siguen enteros: 1,1 MB el de día, 1,7 MB el de noche, con sus
+160–190 ms de descompresión PIZ. Es lo más caro que carga la sala y aun así
+se queda.
 
-De 1,1 MB a 276 kB el de día, de 1,7 MB a 305 kB el de noche, y se acabaron
-los 160–190 ms de descompresión PIZ con la sala parada. El `EXRLoader` ya no
-se importa, así que tampoco viaja en el paquete.
+Se llegó a partir en dos —un webp para el fondo y un mapa reducido en media
+precisión para la luz—, con `scene.background` sustituido por una esfera
+propia. Pesaba la cuarta parte y quitaba la descompresión entera. Pero el
+resultado se vio peor: **de día se pierden el sol y el relieve de las nubes,
+y de noche el color de las estrellas y la aurora**. Con el fondo ya no salido
+del cubo de reflejos del PMREM, el cielo se queda plano por mucho que se
+ajuste la exposición —y ajustarla no es gratis: revelarlo con el 0,5 del
+renderer lo deja en azul marino a mediodía, y subirlo de noche convierte el
+negro en gris lechoso—.
 
-**Queda pendiente**: sobran unos 7 MB en `public/Sala` que no referencia
-nadie —`church-museum-1k.exr` (5,6 MB) y `meadow-1k.exr` (1,5 MB, el cielo
-anterior)—. Los `*-sky-1k.exr` sí se conservan: son la fuente de
-`pnpm build:sky`, como los `.png` originales lo son de las texturas. Nada de
-esto lo descarga el navegador, pero viaja en la imagen de Docker.
+**Si se retoma**, que no sea a costa del rango ni de la resolución del cielo,
+y comparando de día **y** de noche antes de dar nada por bueno. El camino que
+queda sin explorar es un contenedor más ligero a la misma resolución y con el
+mismo rango (recomprimir el `.exr` con DWAA, que el `EXRLoader` sí sabe leer),
+para lo que hace falta una herramienta que escriba EXR y no hay ninguna en el
+proyecto.
+
+**Aparte de eso**: sobran unos 7 MB en `public/Sala` que no referencia nadie
+—`church-museum-1k.exr` (5,6 MB) y `meadow-1k.exr` (1,5 MB, el cielo
+anterior)—. No los descarga el navegador, pero viajan en la imagen de Docker.
 
 ## Sonido ambiente (propuesta sin decidir)
 
