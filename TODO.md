@@ -12,19 +12,34 @@ para el detalle; esto es solo el orden de ataque. Marcar al cerrar cada uno.
 - [x] Arreglar `e2e/admin/dashboard.spec.ts` — selector `main ul > li` cogía
       la lista de orden de portada (`FeaturedOrder.tsx`) en vez de la de
       obras; la de obras lleva ahora `aria-label="Obras"` y el test apunta ahí.
-- [x] Tramo de camino este-oeste entre columnas (§ Camino de piedra)
+      Confirmado con la suite E2E real (58/58 en verde).
+- [x] ⚠️ SIN CONFIRMAR — Tramo de camino este-oeste entre columnas
+      (§ Camino de piedra). Verificado por matemáticas, no a simple vista.
 - [ ] Farolas japonesas — asset más ligero y listo tal cual (§ Mobiliario y
       decoración del jardín → Luces sueltas)
-- [x] Resplandor en el marco al acercarse, y que el cuadro se vea siempre
-      bien iluminado (§ Resplandor en el marco)
+- [x] ⚠️ SIN CONFIRMAR — Resplandor en el marco al acercarse, y que el
+      cuadro se vea siempre bien iluminado (§ Resplandor en el marco). Lo
+      segundo sí se vio de noche en el navegador; el resplandor del marco no.
 - [ ] Linternas de suelo — adelgazar el modelo antes de integrar (§ Luces
       sueltas)
-- [x] Pájaros en bandada, estilizados (§ Pájaros en bandada)
+- [x] ⚠️ SIN CONFIRMAR — Pájaros en bandada, con modelo real
+      (§ Pájaros en bandada). Un bug de escala ya corregido y comprobado por
+      números, pero nadie ha visto la bandada volar todavía.
 - [ ] Mobiliario de jardín — banco, plantas, roca, tronco (§ Mobiliario y
       decoración del jardín)
-- [x] Lupa con el detalle real del pipeline (§ Lupa con el detalle real)
+- [x] ⚠️ SIN CONFIRMAR — Lupa con el detalle real del pipeline
+      (§ Lupa con el detalle real). No se ha probado acercándose de verdad a
+      un cuadro con detalles generados.
 - [ ] Paseo guiado — dejar para el final, según el usuario (§ Paseo guiado)
 - [ ] Esculturas generadas desde los cuadros — fase avanzada (§ Esculturas)
+
+**Los cuatro puntos marcados ⚠️ SIN CONFIRMAR están en el PR #23, abierto,
+sin fusionar.** Se hicieron en una sesión con la pestaña de pruebas casi
+siempre en segundo plano (sin WASD fiable), así que se verificaron por
+matemáticas, por red o por captura suelta — nunca paseando por la sala de
+verdad. Antes de fusionar, tocan un paseo real por: el cruce este-oeste, el
+resplandor del marco al acercarse, la bandada de pájaros y la lupa en
+`the-prairie-on-fire` (Marinas de invierno, 24×17 cm).
 
 Bloqueado, esperando al usuario: reconfiguración del edificio (necesita
 planos nuevos, no inventar el plano sin ellos). Sin decidir: sonido ambiente.
@@ -52,7 +67,7 @@ a `night-sky-1k.exr` y baja a la vez las luces de relleno (`FILL_BY_THEME`)
 cielo—. Un botón propio de la sala se descartó: quien nunca lo toca no
 llegaría a verlo.
 
-## Pájaros en bandada, muy lejanos — hecho
+## Pájaros en bandada, muy lejanos — hecho ⚠️ SIN CONFIRMAR
 
 Primer intento con seis `THREE.Sprite` y una silueta en "M" dibujada en
 canvas: el usuario lo vio "cutre", como si volaran 6 W pegadas y demasiado
@@ -67,22 +82,31 @@ la primera. Sin textura propia (material gris liso), así que se tiñe con
 `buildBirdFlock` (`build-room.ts`) monta una bandada de 7, 9 u 11 aves al
 azar (`BIRD_FLOCK_SIZES`) en formación de V, más un ejemplar suelto con su
 propio rumbo aleatorio y su propio periodo —para que no cruce a la vez que
-la bandada ni por el mismo sitio siempre—. Envergadura real 0,22 m
-(`BIRD_WINGSPAN_M`) volando a 22 m de altura (`BIRD_HEIGHT`), bastante más
-alto y más pequeño que el primer intento. Al ser geometría de verdad y no
-un sprite, cada ave recibe la luz de la escena como cualquier otro objeto:
-no hace falta un color por tema, de noche se apaga sola con el resto de la
-sala —se quitó `setTheme`, que ya no hace falta—.
+la bandada ni por el mismo sitio siempre—. Envergadura real 0,16 m
+(`BIRD_WINGSPAN_M`) volando a 40 m de altura (`BIRD_HEIGHT`). Al ser
+geometría de verdad y no un sprite, cada ave recibe la luz de la escena
+como cualquier otro objeto: no hace falta un color por tema, de noche se
+apaga sola con el resto de la sala —se quitó `setTheme`, que ya no hace
+falta—.
+
+**El primer resultado salía muchísimo más grande de lo pedido** —dos fallos
+de escala combinados, ver [[casamargarita-escala-modelos-multiparte]] para
+la lección técnica—: el `.3ds` trae dos aves completas, y medir el grupo
+entero daba la envergadura de las dos juntas, no de una; además
+`scale.setScalar()` sustituía la escala propia que cada mesh ya trae en su
+matriz en vez de multiplicarla. Corregido y verificado con `Box3` sobre la
+instancia final: la envergadura real ya es exactamente 0,16 m, la pedida.
 
 **Aproximado y sin verificar a simple vista**: `BIRD_MODEL_YAW_OFFSET` (a 0)
 es una suposición sobre hacia dónde apunta el morro del modelo tras
 corregir su eje — el `.3ds` no trae ningún dato de "hacia dónde mira", y si
 en el paseo real se ve volando de culo, es ese número el que hay que girar.
-Confirmado sin errores de carga y sin romper nada del resto de la sala; no
-confirmado con los ojos por lo mismo de siempre —ciclo largo, pestaña de
-prueba en segundo plano (ver [[casamargarita-verificar-webgl-navegador]])—.
+Confirmado sin errores de carga, tamaño exacto por números y sin romper
+nada del resto de la sala; no confirmado con los ojos por lo mismo de
+siempre —ciclo largo, pestaña de prueba en segundo plano (ver
+[[casamargarita-verificar-webgl-navegador]])—.
 
-## Camino de piedra — hecho
+## Camino de piedra — hecho ⚠️ SIN CONFIRMAR
 
 Implementado con `TilesTerracottaBeigeSquareStacked001` (`buildPath` en
 `components/webgl/build-room.ts`): un pasillo central por sala, de puerta a
@@ -182,7 +206,7 @@ Dos ideas nuevas del usuario, con sus propios modelos ya localizados:
   a juego con lo "simple" del nombre). El más ligero de todos los assets
   que se han mirado hasta ahora, listo para probar tal cual.
 
-## Resplandor en el marco al acercarse — hecho
+## Resplandor en el marco al acercarse — hecho ⚠️ SIN CONFIRMAR
 
 Cada marco tiene ahora su propio material —antes compartían uno solo entre
 todos los cuadros de la sala, `materials.frame` clonado por obra en
@@ -204,7 +228,7 @@ contraste por encima sin que se note un suelo aparte. Verificado de noche en
 el navegador: los cuadros se leen con claridad incluso con el ambiente casi
 en negro.
 
-## Lupa con el detalle real del pipeline — hecho
+## Lupa con el detalle real del pipeline — hecho ⚠️ SIN CONFIRMAR
 
 `obrasSalaPorSecciones` (`lib/public/queries.ts`) baja ahora la portada y
 las fotos de detalle de cada obra en la misma consulta —Prisma no deja
