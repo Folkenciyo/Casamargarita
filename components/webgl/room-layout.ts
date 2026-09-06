@@ -5,6 +5,10 @@ export type RoomPainting = {
   widthCm: number;
   heightCm: number;
   textureUrl: string;
+  /** Fotos de detalle generadas por `generatePaintingDetails` — casi siempre
+   * vacío, es a petición. Con al menos una, la lupa las usa al acercarse
+   * mucho al lienzo en vez de ampliar `textureUrl` (ver `build-room.ts`). */
+  detailUrls: string[];
 };
 
 export type HungPainting = RoomPainting & {

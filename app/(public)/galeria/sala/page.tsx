@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { RoomGate } from "@/components/webgl/RoomGate";
 import { formatPrice } from "@/lib/catalog";
-import { imageUrl } from "@/lib/images/urls";
+import { imageUrl, largestWidth } from "@/lib/images/urls";
 import { obrasSalaPorSecciones } from "@/lib/public/queries";
 import { ajustesPublicos } from "@/lib/settings";
 import { STATUS_LABELS } from "@/lib/validation/painting";
@@ -52,6 +52,11 @@ export default async function RoomPage({
               cover.widths.includes(800) ? 800 : (cover.widths[0] ?? 400),
               "webp",
             ),
+            // La lupa (Room3D) las pide a la resolución más grande que haya:
+            // de cerca es donde se nota el grano si no la tiene.
+            detailUrls: painting.images
+              .filter((image) => image.isDetail)
+              .map((image) => imageUrl(image.basePath, largestWidth(image.widths), "webp")),
           };
         }),
     }))

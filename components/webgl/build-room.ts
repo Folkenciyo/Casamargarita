@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
+import type { TDSLoader } from "three/examples/jsm/loaders/TDSLoader.js";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import {
   facingSign,
@@ -24,6 +25,38 @@ import { EYE_LEVEL, WALL_HEIGHT } from "./room-layout";
 
 const FRAME_DEPTH = 0.06;
 const FRAME_BORDER = 0.05;
+
+/**
+ * Suelo de luz propia del lienzo, independiente del aplique o del entorno.
+ *
+ * El aplique normaliza su intensidad al centro del cuadro (ver más abajo,
+ * `lightDistance`), pero eso solo iguala un punto: un cuadro alto se queda
+ * oscuro por abajo porque el foco está montado arriba, y de noche —con las
+ * luces de relleno casi apagadas, `FILL_BY_THEME` en `Room3D.tsx`— cualquier
+ * obra que no reciba bien su aplique se va a negro. `emissiveMap` con la
+ * propia textura del cuadro es la salida: brilla con sus propios colores, no
+ * con un blanco plano, así que la iluminación de verdad sigue dándole
+ * contraste por encima sin que se note un suelo de luz aparte.
+ */
+const PAINTING_BASE_EMISSIVE = 0.4;
+
+/**
+ * Resplandor del marco al acercarse, antes de hacer clic — refuerza que el
+ * cuadro es interactivo sin depender del hover del ratón, que casi no se usa
+ * en un museo que se recorre con WASD. Cada marco necesita su propio
+ * material —`materials.frame` se comparte entre todos— para que el brillo
+ * sea de la obra a la que te acercas, no de todas a la vez.
+ */
+const FRAME_GLOW_COLOR = "#8c3f24"; // --color-oil de la casa
+/** Máxima `emissiveIntensity` del marco, pegado al cuadro. Lo aplica
+ * `Room3D.tsx` cada fotograma; se exportan junto al color para que el
+ * cálculo de la caída con la distancia viva en un solo sitio. */
+export const FRAME_GLOW_MAX = 0.7;
+/** Metros desde el centro del lienzo a partir de los cuales el resplandor ya
+ * no crece más — aproximadamente donde `distanceFor` planta la cámara en la
+ * vista general, así que ya se ve un principio de brillo al entrar en la
+ * sala, no solo pegado al cuadro. */
+export const FRAME_GLOW_RADIUS = 5;
 
 /** Carcasa del aplique de luz: una caja sencilla montada en la pared, encima
  * del cuadro. Su ancho se deduce del cuadro (como el resto de proporciones
@@ -360,14 +393,20 @@ export function buildFloorPlan(
 
 /**
  * El camino de piedra: un pasillo central en cada sala —de puerta a
- * puerta, porque las salas de una misma columna comparten centro en X— y un
- * tramo perpendicular frente a los cuadros, marcando la zona de visita.
+ * puerta, porque las salas de una misma columna comparten centro en X— un
+ * tramo perpendicular frente a los cuadros marcando la zona de visita, y un
+ * tramo lateral hacia cada vecina este/oeste, cruzando su puerta compartida.
  * Va ligeramente por encima del suelo, no clavado en él (ver `materials.path`
  * en `createRoomMaterials`).
  *
- * Solo conecta las salas apiladas en la misma columna (las que comparten
- * puerta norte-sur); la puerta este-oeste entre columnas no tiene todavía su
- * propio tramo — queda para cuando se retome esta idea.
+ * El tramo lateral no sale del centro de la sala: arranca donde termina el
+ * pasillo central (`center.x ± PATH_WIDTH / 2`) y llega hasta la pared
+ * compartida (`center.x ± width / 2`, la misma coordenada que calcula
+ * `wallSegments` para esa pared). Cada sala solo construye su propio lado —la
+ * vecina construye el suyo cuando le toque—, y los dos tramos se tocan
+ * justo en la pared sin solaparse: la misma idea que ya evita el
+ * z-fighting entre el pasillo central y la tira frente a los cuadros, ahora
+ * en la dirección perpendicular.
  */
 export function buildPath(
   scene: THREE.Scene,
@@ -404,6 +443,29 @@ export function buildPath(
     );
 
     addStrip(placement.center.x, artZ + sign * PATH_VIEWING_DISTANCE, placement.width, PATH_WIDTH);
+
+    // Tramo lateral hacia cada vecina que exista, cruzando la puerta este u
+    // oeste. La puerta cae exactamente en `center.z` —`wallSegments` centra
+    // ahí el hueco de la pared lateral—, que es donde ya pasa el pasillo
+    // central: por eso el tramo lateral parte de su borde en vez de solapar.
+    if (placement.neighbors.east !== undefined) {
+      const eastX = placement.center.x + placement.width / 2;
+      addStrip(
+        (placement.center.x + PATH_WIDTH / 2 + eastX) / 2,
+        placement.center.z,
+        eastX - (placement.center.x + PATH_WIDTH / 2),
+        PATH_WIDTH,
+      );
+    }
+    if (placement.neighbors.west !== undefined) {
+      const westX = placement.center.x - placement.width / 2;
+      addStrip(
+        (westX + placement.center.x - PATH_WIDTH / 2) / 2,
+        placement.center.z,
+        placement.center.x - PATH_WIDTH / 2 - westX,
+        PATH_WIDTH,
+      );
+    }
   }
 
   return {
@@ -414,9 +476,33 @@ export function buildPath(
   };
 }
 
+/** Un marco al que animar el resplandor según la distancia de la cámara —ver
+ * `FRAME_GLOW_*` más arriba—. `position` es el centro del lienzo, no del
+ * marco: es la misma referencia que ya usa el aplique para apuntar su luz. */
+export type FrameGlowTarget = {
+  material: THREE.MeshStandardMaterial;
+  position: THREE.Vector3;
+};
+
+/**
+ * Distancia de la cámara al lienzo a partir de la cual se enseña el detalle
+ * real en vez de la foto general — bastante más cerca que donde para el
+ * acercamiento automático al hacer clic (`Math.max(distanceFor(...), 1.4)`
+ * en `Room3D.tsx`): hay que caminar más allá de esa vista para pedirlo, no
+ * es lo primero que se ve al enfocar una obra.
+ */
+const MAGNIFIER_DISTANCE = 0.9;
+
 export type RoomPaintingsHandle = {
   /** Para el raycaster: qué índice de `placement.room.hung` es cada lienzo. */
   indexOfMesh: Map<THREE.Object3D, number>;
+  /** Un marco por obra, para el resplandor al acercarse (`Room3D.tsx` lo
+   * actualiza cada fotograma, no aquí: esto no sabe nada de la cámara). */
+  glowTargets: FrameGlowTarget[];
+  /** La lupa: qué lienzo enseña su foto de detalle según lo cerca que esté la
+   * cámara. Se llama cada fotograma; solo hace algo el fotograma en que se
+   * cruza el umbral, no en cada uno. */
+  update: (camera: THREE.Camera) => void;
   dispose: () => void;
 };
 
@@ -437,6 +523,15 @@ export function buildRoomPaintings(
   const geometries: THREE.BufferGeometry[] = [];
   const disposables: Array<{ dispose: () => void }> = [];
   const indexOfMesh = new Map<THREE.Object3D, number>();
+  const glowTargets: FrameGlowTarget[] = [];
+  const magnifiers: Array<{
+    position: THREE.Vector3;
+    material: THREE.MeshStandardMaterial;
+    coverTexture: THREE.Texture;
+    detailUrl: string;
+    detailTexture: THREE.Texture | null;
+    showingDetail: boolean;
+  }> = [];
 
   const sign = facingSign(placement.facing);
   const { art: artZ } = roomWallZ(placement);
@@ -449,19 +544,37 @@ export function buildRoomPaintings(
 
     const worldX = placement.center.x + painting.x;
 
+    // Material propio y no el compartido `materials.frame`: el resplandor al
+    // acercarse es de esta obra, no de todas las de la sala a la vez. Clonar
+    // reutiliza las mismas texturas (`map`/`normalMap`/`roughnessMap`), así
+    // que no pesa más en descargas, solo un objeto Material más por cuadro.
+    const frameMaterial = materials.frame.clone();
+    frameMaterial.emissive = new THREE.Color(FRAME_GLOW_COLOR);
+    frameMaterial.emissiveIntensity = 0;
+    disposables.push(frameMaterial);
+
     const frameGeometry = new THREE.BoxGeometry(
       painting.width + FRAME_BORDER * 2,
       painting.height + FRAME_BORDER * 2,
       FRAME_DEPTH,
     );
-    const frame = new THREE.Mesh(frameGeometry, materials.frame);
+    const frame = new THREE.Mesh(frameGeometry, frameMaterial);
     frame.position.set(worldX, painting.y, artZ + sign * (FRAME_DEPTH / 2));
     frame.rotation.y = placement.facing;
     scene.add(frame);
     objects.push(frame);
     geometries.push(frameGeometry);
+    glowTargets.push({ material: frameMaterial, position: frame.position.clone() });
 
-    const canvasMaterial = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.85 });
+    const canvasMaterial = new THREE.MeshStandardMaterial({
+      map: texture,
+      roughness: 0.85,
+      // Ver `PAINTING_BASE_EMISSIVE`: un suelo de luz con los propios colores
+      // del cuadro, para que nunca dependa solo del aplique o del entorno.
+      emissive: 0xffffff,
+      emissiveMap: texture,
+      emissiveIntensity: PAINTING_BASE_EMISSIVE,
+    });
     const canvasGeometry = new THREE.PlaneGeometry(painting.width, painting.height);
     const canvasMesh = new THREE.Mesh(canvasGeometry, canvasMaterial);
     canvasMesh.position.set(worldX, painting.y, artZ + sign * (FRAME_DEPTH + 0.001));
@@ -471,6 +584,22 @@ export function buildRoomPaintings(
     geometries.push(canvasGeometry);
     disposables.push(canvasMaterial);
     indexOfMesh.set(canvasMesh, index);
+
+    // La lupa: si la obra tiene fotos de detalle generadas, se registra aquí
+    // y `update()` decide cada fotograma si toca mostrarla — no se pide la
+    // foto de detalle hasta que alguien se acerca de verdad (solo la primera,
+    // ver `MAGNIFIER_DISTANCE`): la mayoría de visitas a la sala no llega a
+    // pedir ni una.
+    if (painting.detailUrls.length > 0) {
+      magnifiers.push({
+        position: canvasMesh.position.clone(),
+        material: canvasMaterial,
+        coverTexture: texture,
+        detailUrl: painting.detailUrls[0]!,
+        detailTexture: null,
+        showingDetail: false,
+      });
+    }
 
     // La carcasa del aplique, montada en la pared justo encima del marco.
     const fixtureWidth = Math.max(painting.width * FIXTURE_WIDTH_RATIO, FIXTURE_MIN_WIDTH);
@@ -510,8 +639,31 @@ export function buildRoomPaintings(
     objects.push(light);
   });
 
+  function update(camera: THREE.Camera) {
+    for (const magnifier of magnifiers) {
+      const shouldShowDetail = camera.position.distanceTo(magnifier.position) < MAGNIFIER_DISTANCE;
+      if (shouldShowDetail === magnifier.showingDetail) continue;
+      magnifier.showingDetail = shouldShowDetail;
+
+      if (shouldShowDetail && !magnifier.detailTexture) {
+        const detail = textureLoader.load(magnifier.detailUrl);
+        detail.colorSpace = THREE.SRGBColorSpace;
+        detail.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        disposables.push(detail);
+        magnifier.detailTexture = detail;
+      }
+
+      const nextMap = shouldShowDetail ? magnifier.detailTexture : magnifier.coverTexture;
+      magnifier.material.map = nextMap;
+      magnifier.material.emissiveMap = nextMap;
+      magnifier.material.needsUpdate = true;
+    }
+  }
+
   return {
     indexOfMesh,
+    glowTargets,
+    update,
     dispose() {
       for (const object of objects) scene.remove(object);
       for (const geometry of geometries) geometry.dispose();
@@ -975,6 +1127,226 @@ export function buildCornerTrees(
   return {
     dispose() {
       for (const root of roots) scene.remove(root);
+      for (const disposable of disposables) disposable.dispose();
+    },
+  };
+}
+
+const BIRD_MODEL = "/Sala/pajaro/bird.3ds";
+/**
+ * El `.3ds` trae dos aves casi idénticas una al lado de la otra —comprobado
+ * cargándolo aparte, no es un ala y un cuerpo sueltos, son dos ejemplares
+ * completos—; se usa solo la primera y se descarta la segunda.
+ */
+const BIRD_MODEL_MESH_INDEX = 0;
+/**
+ * Envergadura real de **un solo** pájaro tras aplicar `BIRD_MODEL_UP_FIX` —
+ * es decir, ya con la escala propia que cada malla trae en su matriz
+ * (`mesh.scale`, ~0,0386), pero sin la del grupo, que en este archivo vale 1.
+ *
+ * El `.3ds` trae **dos** aves puestas una junto a otra mediante
+ * `mesh.position` —no es un ala y un cuerpo sueltos, son dos ejemplares
+ * completos, ver `BIRD_MODEL_MESH_INDEX`—; medir con `Box3` el grupo entero
+ * da la envergadura de las dos juntas (34,71), el doble de una sola (16,69).
+ * El primer intento usó el número equivocado y además pisó la escala propia
+ * del mesh con `scale.setScalar(...)` en vez de multiplicarla: la envergadura
+ * de verdad salió bastante más de 10 veces mayor de la que se pedía. No se
+ * puede asumir ninguna de estas dos cosas con un modelo nuevo —hay que medir
+ * un solo hijo del grupo, con su matriz ya aplicada, y multiplicar la escala
+ * en vez de sustituirla—.
+ */
+const BIRD_MODEL_TRUE_WINGSPAN = 16.69;
+/** Envergadura que se quiere en la sala: pequeña de verdad, para que se lea
+ * como un pájaro muy lejano y no como un objeto. */
+const BIRD_WINGSPAN_M = 0.16;
+/** Factor **adicional** sobre la escala que el mesh ya trae en su matriz —se
+ * multiplica, nunca sustituye—. */
+const BIRD_MODEL_SCALE = BIRD_WINGSPAN_M / BIRD_MODEL_TRUE_WINGSPAN;
+/** El `.3ds` viene con Z arriba (convención de 3ds Max); three.js espera Y
+ * arriba. Sin este giro el pájaro vuela tumbado de lado. */
+const BIRD_MODEL_UP_FIX = -Math.PI / 2;
+/**
+ * A qué distancia del eje de vuelo apunta el morro del modelo, en el giro
+ * que ya trae tras `BIRD_MODEL_UP_FIX`. Es una aproximación —no hay en el
+ * archivo ningún dato de "hacia dónde mira"—; si en el paseo real se ve
+ * volando de culo, es este número el que hay que girar.
+ */
+const BIRD_MODEL_YAW_OFFSET = 0;
+
+/** Altura de vuelo: muy por encima de la pared, para que se lean como algo
+ * que sobrevuela el edificio a distancia y no como si rozara el tejado.
+ * Subida de 22 a 40 tras la primera queja: con el bug de escala de arriba,
+ * un pájaro diez veces más grande de lo debido se leía como cercano al
+ * suelo por mucho que volara "alto" en números. */
+const BIRD_HEIGHT = 40;
+/** Cuánto varía la altura de vuelo de un pájaro a otro, y de un pase al
+ * siguiente del solitario — nada vuela todo en el mismo plano exacto. */
+const BIRD_HEIGHT_JITTER = 5;
+/** Colores tierra —marrón, beige— y no el azul del modelo original: el
+ * material de fábrica es gris liso sin textura, así que tintarlo es gratis. */
+const BIRD_COLORS = ["#8a6642", "#c2a878", "#6b4a30", "#a97d54", "#d8c39a"] as const;
+
+/** Segundos que tarda un vuelo en cruzar de un lado al otro del plano y
+ * volver a empezar. Largo a propósito: se cruza con el cielo «de vez en
+ * cuando», no en bucle evidente cada pocos segundos. */
+const BIRD_PERIOD_S = 140;
+/** Cuánto se sale un vuelo más allá del propio plano del museo, a cada lado
+ * del recorrido — para que entre y salga del campo de visión en vez de
+ * aparecer o desaparecer de golpe justo sobre el edificio. */
+const BIRD_MARGIN = 30;
+/** La bandada tiene entre 7 y 11 aves, siempre un número impar —una
+ * formación en V con las dos ramas iguales más una en cabeza no cuadra con
+ * un número par—, elegido al azar en cada montaje. */
+const BIRD_FLOCK_SIZES = [7, 9, 11] as const;
+
+type BirdFlight = {
+  root: THREE.Object3D;
+  /** Metros a cada lado del eje de vuelo, y su propia altura — fijos por
+   * ave, calculados una vez al montar. */
+  along: number;
+  side: number;
+  height: number;
+  /** Radianes por segundo a los que se desplaza el punto medio del vuelo:
+   * negativo para la fase de vuelta. Se guarda ya multiplicado por el signo
+   * en vez de recalcularlo cada fotograma. */
+  dirX: number;
+  dirZ: number;
+  sideX: number;
+  sideZ: number;
+  halfSpan: number;
+  periodS: number;
+  /** Desfase en segundos: sin él, el solitario saldría siempre a la vez que
+   * la bandada en cada recarga. */
+  phaseOffsetS: number;
+};
+
+function birdDirection(angle: number) {
+  const dirX = Math.sin(angle);
+  const dirZ = Math.cos(angle);
+  return { dirX, dirZ, sideX: -dirZ, sideZ: dirX };
+}
+
+export type BirdFlockHandle = {
+  /** Se llama una vez por fotograma, con los segundos desde que se montó la
+   * sala —no falta de tiempo real, la posición es una función pura de él—. */
+  update: (elapsedSeconds: number) => void;
+  dispose: () => void;
+};
+
+/**
+ * Una bandada de verdad —el modelo `.3ds` de un pájaro en vuelo, no una
+ * silueta plana— más un ejemplar solitario que cruza el cielo por su cuenta
+ * de vez en cuando, con su propio rumbo y su propio reloj. Cada vuelo hace
+ * un vaivén diagonal de extremo a extremo del plano del museo —no un bucle
+ * circular, que a esta escala se leería como un dron dando vueltas—.
+ *
+ * Al ser geometría de verdad y no un sprite, cada ejemplar recibe la luz de
+ * la escena como cualquier otro objeto: no hace falta un color por tema —de
+ * noche se apaga solo, con el resto de la sala.
+ */
+export function buildBirdFlock(
+  scene: THREE.Scene,
+  placements: Placement[],
+  tdsLoader: TDSLoader,
+  onLoad: () => void,
+): BirdFlockHandle {
+  const bounds = planBounds(placements);
+  const centerX = (bounds.minX + bounds.maxX) / 2;
+  const centerZ = (bounds.minZ + bounds.maxZ) / 2;
+  // Vuelo en diagonal sobre la diagonal más larga del plano, con margen a
+  // cada lado: en un museo de una sola sala eso ya cruza de sobra el campo de
+  // visión; en uno grande, cruza el edificio entero.
+  const halfSpan = Math.hypot(bounds.maxX - bounds.minX, bounds.maxZ - bounds.minZ) / 2 + BIRD_MARGIN;
+
+  const flights: BirdFlight[] = [];
+  const disposables: Array<{ dispose: () => void }> = [];
+
+  tdsLoader.load(BIRD_MODEL, (group) => {
+    const source = group.children[BIRD_MODEL_MESH_INDEX];
+    if (!(source instanceof THREE.Mesh)) {
+      onLoad();
+      return;
+    }
+
+    function spawnBird(along: number, side: number, height: number, direction: ReturnType<typeof birdDirection>) {
+      const bird = source as THREE.Mesh;
+      const instance = bird.clone();
+      // El archivo separa las dos aves con esta `position`; sin anularla,
+      // cada copia arrastraría el hueco entre ambas y giraría sobre un
+      // pivote descentrado en vez de sobre su propio eje.
+      instance.position.set(0, 0, 0);
+      instance.material = (bird.material as THREE.MeshStandardMaterial).clone();
+      const color = BIRD_COLORS[Math.floor(Math.random() * BIRD_COLORS.length)]!;
+      (instance.material as THREE.MeshStandardMaterial).color.set(color);
+      disposables.push(instance.material as THREE.MeshStandardMaterial);
+
+      // Multiplica la escala que el mesh ya trae en su matriz —no la
+      // sustituye—: `setScalar` aquí fue el bug que hacía salir el pájaro
+      // muchísimo más grande de lo pedido (ver `BIRD_MODEL_TRUE_WINGSPAN`).
+      instance.scale.multiplyScalar(BIRD_MODEL_SCALE);
+      instance.rotation.x = BIRD_MODEL_UP_FIX;
+      instance.rotation.z = Math.atan2(direction.dirX, direction.dirZ) + BIRD_MODEL_YAW_OFFSET;
+      scene.add(instance);
+
+      flights.push({
+        root: instance,
+        along,
+        side,
+        height,
+        ...direction,
+        halfSpan,
+        periodS: BIRD_PERIOD_S,
+        phaseOffsetS: 0,
+      });
+    }
+
+    // La bandada: formación en V floja, ramas alternas a cada lado, cada una
+    // un poco más atrás y más abierta que la anterior.
+    const flockSize = BIRD_FLOCK_SIZES[Math.floor(Math.random() * BIRD_FLOCK_SIZES.length)]!;
+    const flockDirection = birdDirection(Math.PI / 4); // la diagonal de siempre
+    spawnBird(0, 0, 0, flockDirection);
+    for (let i = 1; i < flockSize; i++) {
+      const rama = i % 2 === 0 ? 1 : -1;
+      const paso = Math.ceil(i / 2);
+      spawnBird(
+        -paso * 1.1,
+        rama * paso * 1.3,
+        (Math.random() - 0.5) * BIRD_HEIGHT_JITTER,
+        flockDirection,
+      );
+    }
+
+    // El solitario: rumbo y periodo propios, para que no cruce a la vez que
+    // la bandada ni por el mismo sitio siempre.
+    const loneDirection = birdDirection(Math.random() * Math.PI * 2);
+    spawnBird(0, 0, (Math.random() - 0.5) * BIRD_HEIGHT_JITTER, loneDirection);
+    const soloFlight = flights[flights.length - 1]!;
+    soloFlight.periodS = BIRD_PERIOD_S * (1.4 + Math.random() * 0.8);
+    soloFlight.phaseOffsetS = Math.random() * soloFlight.periodS;
+
+    onLoad();
+  });
+
+  function placeFlight(flight: BirdFlight, elapsedSeconds: number) {
+    const phase = ((elapsedSeconds + flight.phaseOffsetS) / flight.periodS) % 1;
+    // Vaivén 0→1→0 con `triangle wave`, no un `%` a secas: así el vuelo
+    // frena, da media vuelta y vuelve, en vez de saltar de un extremo al
+    // otro de golpe cada vez que se cumple el periodo.
+    const t = phase < 0.5 ? phase * 2 : 2 - phase * 2;
+    const a = -flight.halfSpan + t * (flight.halfSpan * 2) + flight.along;
+    flight.root.position.set(
+      centerX + flight.dirX * a + flight.sideX * flight.side,
+      BIRD_HEIGHT + flight.height,
+      centerZ + flight.dirZ * a + flight.sideZ * flight.side,
+    );
+  }
+
+  return {
+    update(elapsedSeconds) {
+      for (const flight of flights) placeFlight(flight, elapsedSeconds);
+    },
+    dispose() {
+      for (const flight of flights) scene.remove(flight.root);
       for (const disposable of disposables) disposable.dispose();
     },
   };

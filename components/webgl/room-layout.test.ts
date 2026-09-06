@@ -9,6 +9,7 @@ function painting(widthCm: number, heightCm: number): RoomPainting {
     widthCm,
     heightCm,
     textureUrl: "/api/uploads/x/800.webp",
+    detailUrls: [],
   };
 }
 

@@ -239,7 +239,7 @@ export default async function AdminPaintingsPage({
             : "Todavía no hay obras. Empieza por añadir la primera."}
         </p>
       ) : (
-        <ul className="grid gap-3">
+        <ul aria-label="Obras" className="grid gap-3">
           {paintings.map((painting) => (
             <li
               key={painting.id}
