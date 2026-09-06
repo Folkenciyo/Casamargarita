@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { EXRLoader } from "three/examples/jsm/loaders/EXRLoader.js";
 import { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
+import { TDSLoader } from "three/examples/jsm/loaders/TDSLoader.js";
 import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLightUniformsLib.js";
 import {
   buildBirdFlock,
@@ -366,6 +367,7 @@ export function Room3D({
     };
     const textureLoader = new THREE.TextureLoader(manager);
     const fbxLoader = new FBXLoader(manager);
+    const tdsLoader = new TDSLoader(manager);
 
     // Luz de entorno: un HDRI de cielo real, convertido a mapa de
     // reflejo/irradiancia. En cuanto llega, todo material PBR de la escena
@@ -420,7 +422,6 @@ export function Room3D({
       applyHdri(HDRI_BY_THEME[theme], new EXRLoader());
       ambient.intensity = FILL_BY_THEME[theme].ambient;
       fill.intensity = FILL_BY_THEME[theme].directional;
-      birds?.setTheme(theme);
     }
     window.addEventListener("theme-change", onThemeChange);
 
@@ -795,12 +796,10 @@ export function Room3D({
       await cede();
       if (cancelled) return;
 
-      // La bandada que cruza el cielo — no carga ningún fichero (silueta
-      // dibujada en canvas), así que no aporta nada a la barra de descargas,
-      // pero se le da su fotograma de respiro igual que al resto.
+      // La bandada que cruza el cielo — un modelo real, así que sí entra en
+      // la cuenta de descargas del gestor común.
       fase("jardin", 3 / 4);
-      birds = buildBirdFlock(scene, placements);
-      birds.setTheme(theme);
+      birds = buildBirdFlock(scene, placements, tdsLoader, () => renderer.render(scene, camera));
       cleanups.push(() => birds?.dispose());
       await cede();
       if (cancelled) return;

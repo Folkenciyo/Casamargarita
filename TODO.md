@@ -54,25 +54,33 @@ llegaría a verlo.
 
 ## Pájaros en bandada, muy lejanos — hecho
 
-Seis `THREE.Sprite` (siempre de cara a la cámara, sin geometría que orientar)
-con una silueta en "M" dibujada en un `<canvas>` 2D —`drawBirdSilhouette` en
-`build-room.ts`—, no un modelo 3D: no busca fotorrealismo, es el gesto mínimo
-que se lee como ave en vuelo. `buildBirdFlock` los coloca en una formación
-fija (`BIRD_OFFSETS`, una V suave) y los mueve en vaivén diagonal —no un
-bucle circular, que a esta escala se leería como un dron— de un extremo a
-otro del plano del museo, en 140 s por pasada; `Room3D.tsx` llama a
-`update(segundos)` cada fotograma con el tiempo desde que se montó la sala.
+Primer intento con seis `THREE.Sprite` y una silueta en "M" dibujada en
+canvas: el usuario lo vio "cutre", como si volaran 6 W pegadas y demasiado
+grandes y bajas. Sustituido por el modelo real que pasó
+(`lowpoly_bird.3DS`, 20 kB, en `public/Sala/pajaro/bird.3ds`, cargado con
+`TDSLoader`) — comprobado antes de integrarlo con una ruta de depuración
+aparte, no a ciegas: el `.3ds` trae **dos** aves completas una junto a otra
+(no un ala y un cuerpo sueltos), y `BIRD_MODEL_MESH_INDEX` se queda solo con
+la primera. Sin textura propia (material gris liso), así que se tiñe con
+`BIRD_COLORS` —tonos tierra, marrón y beige, varios al azar por ejemplar—.
 
-La silueta es una máscara de alfa en blanco, no un color fijo: `setTheme`
-tiñe el material según el tema —oscura de día, gris pálida de noche—, porque
-un trazo oscuro fijo desaparecía sin remedio contra el cielo nocturno.
+`buildBirdFlock` (`build-room.ts`) monta una bandada de 7, 9 u 11 aves al
+azar (`BIRD_FLOCK_SIZES`) en formación de V, más un ejemplar suelto con su
+propio rumbo aleatorio y su propio periodo —para que no cruce a la vez que
+la bandada ni por el mismo sitio siempre—. Envergadura real 0,22 m
+(`BIRD_WINGSPAN_M`) volando a 22 m de altura (`BIRD_HEIGHT`), bastante más
+alto y más pequeño que el primer intento. Al ser geometría de verdad y no
+un sprite, cada ave recibe la luz de la escena como cualquier otro objeto:
+no hace falta un color por tema, de noche se apaga sola con el resto de la
+sala —se quitó `setTheme`, que ya no hace falta—.
 
-**Sin verificar a simple vista**: el ciclo es largo (140 s) y la pestaña
-usada para probar corre en segundo plano, donde `requestAnimationFrame` casi
-no se ejecuta (ver [[casamargarita-verificar-webgl-navegador]]) — la
-trayectoria se comprobó con números reales (`layoutFloorPlan` + la misma
-fórmula), no mirándola. Confirmar en persona la próxima vez que se pasee por
-la sala con tiempo.
+**Aproximado y sin verificar a simple vista**: `BIRD_MODEL_YAW_OFFSET` (a 0)
+es una suposición sobre hacia dónde apunta el morro del modelo tras
+corregir su eje — el `.3ds` no trae ningún dato de "hacia dónde mira", y si
+en el paseo real se ve volando de culo, es ese número el que hay que girar.
+Confirmado sin errores de carga y sin romper nada del resto de la sala; no
+confirmado con los ojos por lo mismo de siempre —ciclo largo, pestaña de
+prueba en segundo plano (ver [[casamargarita-verificar-webgl-navegador]])—.
 
 ## Camino de piedra — hecho
 

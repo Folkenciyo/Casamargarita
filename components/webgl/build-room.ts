@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { FBXLoader } from "three/examples/jsm/loaders/FBXLoader.js";
+import type { TDSLoader } from "three/examples/jsm/loaders/TDSLoader.js";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import {
   facingSign,
@@ -1131,87 +1132,108 @@ export function buildCornerTrees(
   };
 }
 
-/** Altura de vuelo: bastante por encima de la pared para leerse contra el
- * cielo, nunca contra el edificio. */
-const BIRD_HEIGHT = WALL_HEIGHT * 2.4;
-/** Envergadura del sprite, en metros de mundo — a esta altura y distancia,
- * más grande empezaría a leerse como un objeto y no como un pájaro lejano. */
-const BIRD_SIZE = 1.3;
-/** Segundos que tarda la bandada en cruzar de un lado al otro del plano y
+const BIRD_MODEL = "/Sala/pajaro/bird.3ds";
+/**
+ * El `.3ds` trae dos aves casi idénticas una al lado de la otra —comprobado
+ * cargándolo aparte, no es un ala y un cuerpo sueltos, son dos ejemplares
+ * completos—; se usa solo la primera y se descarta la segunda.
+ */
+const BIRD_MODEL_MESH_INDEX = 0;
+/** Envergadura real del modelo tal como lo carga `TDSLoader` —que ya aplica
+ * su propia escala interna del `.3ds`—, medida con `Box3` una vez corregido
+ * el eje (ver `BIRD_MODEL_UP_FIX`). De ahí sale `BIRD_MODEL_SCALE`; no se
+ * puede asumir escala 1:1 con un modelo nuevo, hay que volver a medir. */
+const BIRD_MODEL_RAW_WINGSPAN = 34.71;
+/** Envergadura que se quiere en la sala: pequeña de verdad, para que se lea
+ * como un pájaro muy lejano y no como un objeto —la queja de partida era
+ * justo que los anteriores parecían grandes y cercanos. */
+const BIRD_WINGSPAN_M = 0.22;
+const BIRD_MODEL_SCALE = BIRD_WINGSPAN_M / BIRD_MODEL_RAW_WINGSPAN;
+/** El `.3ds` viene con Z arriba (convención de 3ds Max); three.js espera Y
+ * arriba. Sin este giro el pájaro vuela tumbado de lado. */
+const BIRD_MODEL_UP_FIX = -Math.PI / 2;
+/**
+ * A qué distancia del eje de vuelo apunta el morro del modelo, en el giro
+ * que ya trae tras `BIRD_MODEL_UP_FIX`. Es una aproximación —no hay en el
+ * archivo ningún dato de "hacia dónde mira"—; si en el paseo real se ve
+ * volando de culo, es este número el que hay que girar.
+ */
+const BIRD_MODEL_YAW_OFFSET = 0;
+
+/** Altura de vuelo: muy por encima de la pared, para que se lean como algo
+ * que sobrevuela el edificio a distancia y no como si rozara el tejado. */
+const BIRD_HEIGHT = 22;
+/** Cuánto varía la altura de vuelo de un pájaro a otro, y de un pase al
+ * siguiente del solitario — nada vuela todo en el mismo plano exacto. */
+const BIRD_HEIGHT_JITTER = 3;
+/** Colores tierra —marrón, beige— y no el azul del modelo original: el
+ * material de fábrica es gris liso sin textura, así que tintarlo es gratis. */
+const BIRD_COLORS = ["#8a6642", "#c2a878", "#6b4a30", "#a97d54", "#d8c39a"] as const;
+
+/** Segundos que tarda un vuelo en cruzar de un lado al otro del plano y
  * volver a empezar. Largo a propósito: se cruza con el cielo «de vez en
  * cuando», no en bucle evidente cada pocos segundos. */
 const BIRD_PERIOD_S = 140;
-/** Cuánto se sale la bandada más allá del propio plano del museo, a cada
- * lado del recorrido — para que entre y salga del campo de visión en vez de
+/** Cuánto se sale un vuelo más allá del propio plano del museo, a cada lado
+ * del recorrido — para que entre y salga del campo de visión en vez de
  * aparecer o desaparecer de golpe justo sobre el edificio. */
 const BIRD_MARGIN = 30;
+/** La bandada tiene entre 7 y 11 aves, siempre un número impar —una
+ * formación en V con las dos ramas iguales más una en cabeza no cuadra con
+ * un número par—, elegido al azar en cada montaje. */
+const BIRD_FLOCK_SIZES = [7, 9, 11] as const;
 
-/**
- * Silueta de pájaro —dos trazos en "M", el gesto mínimo que se lee como ave
- * en vuelo— dibujada en un canvas 2D, no un modelo 3D: el TODO es explícito
- * en que no busca fotorrealismo, y una silueta así de lejos es justo lo que
- * se ve a simple vista de un pájaro real.
- *
- * Se dibuja en blanco puro y no en un color fijo: es una máscara de alfa, y
- * el color de verdad lo pone `material.color` según el tema (ver
- * `BIRD_COLOR_BY_THEME`). Un trazo oscuro fijo desaparecía sin remedio contra
- * el cielo nocturno —negro sobre casi negro—, que es justo cuando más
- * apliques y menos luz de relleno hay en la sala.
- */
-function drawBirdSilhouette(): HTMLCanvasElement {
-  const size = 64;
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext("2d")!;
-  ctx.strokeStyle = "#ffffff";
-  ctx.lineWidth = size * 0.1;
-  ctx.lineCap = "round";
-  ctx.beginPath();
-  ctx.moveTo(size * 0.04, size * 0.38);
-  ctx.quadraticCurveTo(size * 0.28, size * 0.04, size * 0.5, size * 0.34);
-  ctx.quadraticCurveTo(size * 0.72, size * 0.04, size * 0.96, size * 0.38);
-  ctx.stroke();
-  return canvas;
+type BirdFlight = {
+  root: THREE.Object3D;
+  /** Metros a cada lado del eje de vuelo, y su propia altura — fijos por
+   * ave, calculados una vez al montar. */
+  along: number;
+  side: number;
+  height: number;
+  /** Radianes por segundo a los que se desplaza el punto medio del vuelo:
+   * negativo para la fase de vuelta. Se guarda ya multiplicado por el signo
+   * en vez de recalcularlo cada fotograma. */
+  dirX: number;
+  dirZ: number;
+  sideX: number;
+  sideZ: number;
+  halfSpan: number;
+  periodS: number;
+  /** Desfase en segundos: sin él, el solitario saldría siempre a la vez que
+   * la bandada en cada recarga. */
+  phaseOffsetS: number;
+};
+
+function birdDirection(angle: number) {
+  const dirX = Math.sin(angle);
+  const dirZ = Math.cos(angle);
+  return { dirX, dirZ, sideX: -dirZ, sideZ: dirX };
 }
-
-/** De día se lee como silueta oscura contra el cielo claro; de noche, como
- * un gris pálido contra el negro — ni blanco puro (leería como estrella
- * grande), ni oscuro (se perdería del todo). */
-const BIRD_COLOR_BY_THEME = { light: "#1a1714", dark: "#9c9488" } as const;
 
 export type BirdFlockHandle = {
   /** Se llama una vez por fotograma, con los segundos desde que se montó la
    * sala —no falta de tiempo real, la posición es una función pura de él—. */
   update: (elapsedSeconds: number) => void;
-  /** El mismo interruptor claro/oscuro que cambia el cielo: sin esto, la
-   * bandada seguiría con el color del tema con el que se montó la sala. */
-  setTheme: (theme: "light" | "dark") => void;
   dispose: () => void;
 };
 
 /**
- * Una bandada pequeña que cruza el cielo en diagonal, en un vaivén continuo
- * de extremo a extremo del plano del museo —no un bucle circular, que a esta
- * escala se leería como un dron dando vueltas—. Cada pájaro es un
- * `THREE.Sprite`: siempre de cara a la cámara, sin normales que iluminar ni
- * geometría que orientar, lo justo para una silueta a esta distancia.
+ * Una bandada de verdad —el modelo `.3ds` de un pájaro en vuelo, no una
+ * silueta plana— más un ejemplar solitario que cruza el cielo por su cuenta
+ * de vez en cuando, con su propio rumbo y su propio reloj. Cada vuelo hace
+ * un vaivén diagonal de extremo a extremo del plano del museo —no un bucle
+ * circular, que a esta escala se leería como un dron dando vueltas—.
  *
- * Formación fija y no aleatoria en cada montaje: una V suave, con pequeños
- * desfases de tiempo y altura para que no vuelen todos pegados como un solo
- * bloque, pero siempre la misma bandada — nada que no se pueda volver a ver
- * igual si se recarga la página.
+ * Al ser geometría de verdad y no un sprite, cada ejemplar recibe la luz de
+ * la escena como cualquier otro objeto: no hace falta un color por tema —de
+ * noche se apaga solo, con el resto de la sala.
  */
-const BIRD_OFFSETS: ReadonlyArray<{ along: number; side: number; height: number }> = [
-  { along: 0, side: 0, height: 0 },
-  { along: -1.2, side: 1.4, height: 0.3 },
-  { along: -1.2, side: -1.4, height: -0.2 },
-  { along: -2.6, side: 2.8, height: 0.5 },
-  { along: -2.6, side: -2.8, height: -0.1 },
-  { along: -4, side: 4.2, height: 0.2 },
-];
-
-export function buildBirdFlock(scene: THREE.Scene, placements: Placement[]): BirdFlockHandle {
+export function buildBirdFlock(
+  scene: THREE.Scene,
+  placements: Placement[],
+  tdsLoader: TDSLoader,
+  onLoad: () => void,
+): BirdFlockHandle {
   const bounds = planBounds(placements);
   const centerX = (bounds.minX + bounds.maxX) / 2;
   const centerZ = (bounds.minZ + bounds.maxZ) / 2;
@@ -1220,55 +1242,89 @@ export function buildBirdFlock(scene: THREE.Scene, placements: Placement[]): Bir
   // visión; en uno grande, cruza el edificio entero.
   const halfSpan = Math.hypot(bounds.maxX - bounds.minX, bounds.maxZ - bounds.minZ) / 2 + BIRD_MARGIN;
 
-  const texture = new THREE.CanvasTexture(drawBirdSilhouette());
-  texture.colorSpace = THREE.SRGBColorSpace;
-  const material = new THREE.SpriteMaterial({
-    map: texture,
-    transparent: true,
-    depthWrite: false,
-    // Silueta plana, no un material iluminado: un pájaro tan lejano no
-    // recibe sombreado visible, solo se recorta contra el cielo.
-    toneMapped: false,
+  const flights: BirdFlight[] = [];
+  const disposables: Array<{ dispose: () => void }> = [];
+
+  tdsLoader.load(BIRD_MODEL, (group) => {
+    const source = group.children[BIRD_MODEL_MESH_INDEX];
+    if (!(source instanceof THREE.Mesh)) {
+      onLoad();
+      return;
+    }
+
+    function spawnBird(along: number, side: number, height: number, direction: ReturnType<typeof birdDirection>) {
+      const bird = source as THREE.Mesh;
+      const instance = bird.clone();
+      instance.material = (bird.material as THREE.MeshStandardMaterial).clone();
+      const color = BIRD_COLORS[Math.floor(Math.random() * BIRD_COLORS.length)]!;
+      (instance.material as THREE.MeshStandardMaterial).color.set(color);
+      disposables.push(instance.material as THREE.MeshStandardMaterial);
+
+      instance.scale.setScalar(BIRD_MODEL_SCALE);
+      instance.rotation.x = BIRD_MODEL_UP_FIX;
+      instance.rotation.z = Math.atan2(direction.dirX, direction.dirZ) + BIRD_MODEL_YAW_OFFSET;
+      scene.add(instance);
+
+      flights.push({
+        root: instance,
+        along,
+        side,
+        height,
+        ...direction,
+        halfSpan,
+        periodS: BIRD_PERIOD_S,
+        phaseOffsetS: 0,
+      });
+    }
+
+    // La bandada: formación en V floja, ramas alternas a cada lado, cada una
+    // un poco más atrás y más abierta que la anterior.
+    const flockSize = BIRD_FLOCK_SIZES[Math.floor(Math.random() * BIRD_FLOCK_SIZES.length)]!;
+    const flockDirection = birdDirection(Math.PI / 4); // la diagonal de siempre
+    spawnBird(0, 0, 0, flockDirection);
+    for (let i = 1; i < flockSize; i++) {
+      const rama = i % 2 === 0 ? 1 : -1;
+      const paso = Math.ceil(i / 2);
+      spawnBird(
+        -paso * 1.1,
+        rama * paso * 1.3,
+        (Math.random() - 0.5) * BIRD_HEIGHT_JITTER,
+        flockDirection,
+      );
+    }
+
+    // El solitario: rumbo y periodo propios, para que no cruce a la vez que
+    // la bandada ni por el mismo sitio siempre.
+    const loneDirection = birdDirection(Math.random() * Math.PI * 2);
+    spawnBird(0, 0, (Math.random() - 0.5) * BIRD_HEIGHT_JITTER, loneDirection);
+    const soloFlight = flights[flights.length - 1]!;
+    soloFlight.periodS = BIRD_PERIOD_S * (1.4 + Math.random() * 0.8);
+    soloFlight.phaseOffsetS = Math.random() * soloFlight.periodS;
+
+    onLoad();
   });
 
-  const sprites = BIRD_OFFSETS.map((offset) => {
-    const sprite = new THREE.Sprite(material);
-    sprite.scale.setScalar(BIRD_SIZE);
-    scene.add(sprite);
-    return { sprite, offset };
-  });
+  function placeFlight(flight: BirdFlight, elapsedSeconds: number) {
+    const phase = ((elapsedSeconds + flight.phaseOffsetS) / flight.periodS) % 1;
+    // Vaivén 0→1→0 con `triangle wave`, no un `%` a secas: así el vuelo
+    // frena, da media vuelta y vuelve, en vez de saltar de un extremo al
+    // otro de golpe cada vez que se cumple el periodo.
+    const t = phase < 0.5 ? phase * 2 : 2 - phase * 2;
+    const a = -flight.halfSpan + t * (flight.halfSpan * 2) + flight.along;
+    flight.root.position.set(
+      centerX + flight.dirX * a + flight.sideX * flight.side,
+      BIRD_HEIGHT + flight.height,
+      centerZ + flight.dirZ * a + flight.sideZ * flight.side,
+    );
+  }
 
   return {
     update(elapsedSeconds) {
-      // Vaivén 0→1→0 con `triangle wave`, no un `%` a secas: así la bandada
-      // frena, da media vuelta y vuelve, en vez de saltar de un extremo al
-      // otro de golpe cada vez que se cumple el periodo.
-      const phase = (elapsedSeconds / BIRD_PERIOD_S) % 1;
-      const t = phase < 0.5 ? phase * 2 : 2 - phase * 2;
-      const along = -halfSpan + t * (halfSpan * 2);
-      // Diagonal a 45°: cruza tanto en X como en Z, para verse igual desde
-      // cualquier sala del edificio, no solo desde las que dan a un eje.
-      const dirX = Math.SQRT1_2;
-      const dirZ = Math.SQRT1_2;
-      const sideX = -dirZ;
-      const sideZ = dirX;
-
-      for (const { sprite, offset } of sprites) {
-        const a = along + offset.along;
-        sprite.position.set(
-          centerX + dirX * a + sideX * offset.side,
-          BIRD_HEIGHT + offset.height,
-          centerZ + dirZ * a + sideZ * offset.side,
-        );
-      }
-    },
-    setTheme(theme) {
-      material.color.set(BIRD_COLOR_BY_THEME[theme]);
+      for (const flight of flights) placeFlight(flight, elapsedSeconds);
     },
     dispose() {
-      for (const { sprite } of sprites) scene.remove(sprite);
-      texture.dispose();
-      material.dispose();
+      for (const flight of flights) scene.remove(flight.root);
+      for (const disposable of disposables) disposable.dispose();
     },
   };
 }
