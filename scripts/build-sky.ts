@@ -35,22 +35,32 @@ const ROOM_DIR = path.join(process.cwd(), "public", "Sala");
 const SKY_WIDTH = 1024;
 
 /**
- * El webp guarda el cielo **ya revelado**: con el mismo ACES y la misma
- * exposición que el renderer, no los valores crudos.
+ * El webp guarda el cielo **ya revelado**: pasado por el mismo ACES que usa el
+ * renderer, pero con su propia exposición.
  *
- * El primer intento fue guardarlos crudos y recortar lo que pasara de 1.
- * Parecía inofensivo —en el cielo de día eso es el 0,3 % de los píxeles— pero
- * son justo los que tienen la luz: el sol vale 57.000 y su halo va de 1 a 5.
- * Recortados, el sol se quedó en una mancha sosa, las nubes perdieron el
- * contraste y el cielo entero salió lavado. Revelarlo aquí conserva el
- * resultado exacto de antes, porque es literalmente la misma cuenta.
+ * Que sea propia es el asunto. El `toneMappingExposure` del renderer vale 0,5
+ * y está puesto para que el HDRI no queme de blanco la pared clara de la sala;
+ * revelar el cielo con ese mismo número lo dejaba en azul marino, de noche
+ * cerrada a mediodía. Antes no se notaba porque cielo e iluminación salían del
+ * mismo sitio y no había forma de separarlos. Ahora la luz va por el `.bin`, y
+ * el cielo puede revelarse a su gusto sin tocar ni un material de la sala.
  *
- * A cambio, el cielo se pinta con `toneMapped: false` (ver `Room3D.tsx`): si
- * el renderer volviera a aplicarle su curva, saldría con la exposición puesta
- * dos veces. **Este número tiene que seguir a `renderer.toneMappingExposure`;
- * si allí cambia, aquí también y hay que regenerar los cielos.**
+ * Los números salen de comparar el mismo cielo a varias exposiciones:
+ *  - de día, con 0,5 es azul marino y con 3 se lava hasta perder el azul del
+ *    cenit; en 2 se lee como un día claro con las nubes bien dibujadas.
+ *  - de noche va al revés: subir de 1 convierte el negro en un gris lechoso y
+ *    se acaba la noche. En 0,9 el cielo sigue cerrado y la aurora se ve.
+ *
+ * Antes de esto se probó guardar los valores crudos y recortar lo que pasara
+ * de 1. Parecía inofensivo —de día eso es el 0,3 % de los píxeles— pero son
+ * justo los que tienen la luz: el sol vale 57.000 y su halo va de 1 a 5. Sin
+ * ellos no había ni sol ni relieve en las nubes.
+ *
+ * El cielo se pinta con `toneMapped: false` (ver `Room3D.tsx`): si el renderer
+ * volviera a aplicarle su curva, llevaría la exposición puesta dos veces.
  */
-const TONE_EXPOSURE = 0.5;
+const SKY_EXPOSURE: Record<string, number> = { day: 2, night: 0.9 };
+const EXPOSICION_POR_DEFECTO = 1.2;
 
 /**
  * Cuánto se adelgazan las estrellas del cielo nocturno. Elevar el brillo a una
@@ -93,10 +103,15 @@ function ajusteACES(v: number): number {
  * mostrable. Es lo que convierte un sol de 57.000 en un disco blanco con su
  * halo alrededor, en vez de en un recorte plano.
  */
-function revelar(r: number, g: number, b: number): [number, number, number] {
-  const er = r * TONE_EXPOSURE;
-  const eg = g * TONE_EXPOSURE;
-  const eb = b * TONE_EXPOSURE;
+function revelar(
+  r: number,
+  g: number,
+  b: number,
+  exposicion: number,
+): [number, number, number] {
+  const er = r * exposicion;
+  const eg = g * exposicion;
+  const eb = b * exposicion;
   // A espacio ACES (las columnas de `ACESInputMat`).
   const x = ajusteACES(0.59719 * er + 0.35458 * eg + 0.04823 * eb);
   const y = ajusteACES(0.076 * er + 0.90834 * eg + 0.01566 * eb);
@@ -190,9 +205,15 @@ async function construirCielo(nombre: string, buffer: Buffer): Promise<void> {
   // --- El cielo visible -----------------------------------------------------
   // Solo el de noche tiene estrellas que adelgazar; el de día, ni una.
   const visible = nombre === "night" ? adelgazarEstrellas(pixels) : pixels;
+  const exposicion = SKY_EXPOSURE[nombre] ?? EXPOSICION_POR_DEFECTO;
   const rgb = Buffer.alloc(width * height * 3);
   for (let i = 0; i < width * height; i++) {
-    const color = revelar(visible[i * 4]!, visible[i * 4 + 1]!, visible[i * 4 + 2]!);
+    const color = revelar(
+      visible[i * 4]!,
+      visible[i * 4 + 1]!,
+      visible[i * 4 + 2]!,
+      exposicion,
+    );
     for (let c = 0; c < 3; c++) rgb[i * 3 + c] = aSRGB(color[c]!);
   }
   const destinoSky = path.join(ROOM_DIR, `${nombre}-sky.webp`);

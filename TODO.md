@@ -176,15 +176,17 @@ ese fichero se le pedían dos cosas que no necesitan lo mismo, y ahora van
 por separado (`pnpm build:sky`, `SKY_BY_THEME` en `Room3D.tsx`):
 
 - `day-sky.webp` / `night-sky.webp` — el cielo que se ve. Quiere resolución,
-  no rango dinámico. 17 y 33 kB. Va directo a `scene.background`, sin pasar
-  por el PMREM: antes el fondo era el propio cubo de reflejos, o sea el
-  cielo ya desenfocado, así que además se ve mejor que antes.
+  no rango dinámico. 19 y 48 kB. Va en una esfera propia con
+  `toneMapped: false`, no en `scene.background`: sale del script ya revelado
+  y con su propia exposición, que no es la del renderer (ver `CLAUDE.md`).
+  Antes el fondo era el cubo de reflejos del PMREM, o sea el cielo ya
+  desenfocado, así que además se ve más nítido que antes.
 - `day-env.bin` / `night-env.bin` — la luz. Quiere el rango entero (el sol
   vale mucho más que 1) pero no resolución, porque el PMREM la difumina de
   todas formas: 256×128 en media precisión, 257 kB. El `PMREMGenerator`
   monta su cubo con un lado de un cuarto del ancho que le den, de ahí el 256.
 
-De 1,1 MB a 274 kB el de día, de 1,7 MB a 290 kB el de noche, y se acabaron
+De 1,1 MB a 276 kB el de día, de 1,7 MB a 305 kB el de noche, y se acabaron
 los 160–190 ms de descompresión PIZ con la sala parada. El `EXRLoader` ya no
 se importa, así que tampoco viaja en el paquete.
 

@@ -108,9 +108,17 @@ castellano, con sus tildes.
   den). Salen del `.exr` con `pnpm build:sky`; no los sustituyas a mano, igual
   que las margaritas y las texturas de la sala. Juntos pesan la cuarta parte
   que el `.exr` y ahorran los 160–190 ms que costaba descomprimir PIZ en el
-  hilo principal. El webp se genera **sin** curva de exposición —solo lineal a
-  sRGB—: el tono se lo da el `ACESFilmicToneMapping` del renderer, y aplicarla
-  también al generarlo dejaría el cielo con la exposición puesta dos veces.
+  hilo principal.
+- **El cielo se revela al generarlo, con su propia exposición.** El webp sale
+  ya pasado por el ACES del renderer, y se pinta con `toneMapped: false` sobre
+  una esfera propia para que no se le aplique la curva dos veces. La
+  exposición (`SKY_EXPOSURE`) **no** es la del renderer: ese 0,5 está para que
+  el HDRI no queme la pared clara de la sala, y revelando el cielo con él sale
+  azul marino a mediodía. Como la luz de la sala va ahora por el `.bin`, el
+  cielo puede tener la suya: 2 de día, 0,9 de noche —subirla de 1 de noche
+  convierte el negro en gris lechoso y se acaba la noche—. No guardes los
+  valores crudos recortando por encima de 1: el sol vale 57.000 y su halo va
+  de 1 a 5, y sin ellos no hay ni sol ni relieve en las nubes.
 - **Si añades un `<script>` inline, pásale `scriptNonce()`.** Con la CSP
   activa, sin nonce el navegador lo bloquea.
 - **De un fichero con `"use server"` solo se exportan funciones async.** Una
